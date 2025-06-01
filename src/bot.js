@@ -1,87 +1,72 @@
 // src/bot.js
 import 'dotenv/config';
 import { Client, Collection, GatewayIntentBits, REST, Routes } from 'discord.js';
-import { connectDatabase } from './data/database.js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { connectDatabase } from './data/database.js';
+import interactionHandler from './handlers/interactionHandler.js';
 
+// 1) Initialize the Discord client
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages
-    // Ajoutez d’autres intents si nécessaire (Member intent, MessageContent intent…)
-  ]
+  intents: [ GatewayIntentBits.Guilds ]
 });
 
-// Préparer la collection des commandes
 client.commands = new Collection();
 
-// 1. Charger tous les fichiers de commandes dans client.commands
+// 2) Recursively load all command modules into client.commands
 const commandsPath = path.join(process.cwd(), 'src', 'commands');
-const commandFiles = fs.readdirSync(commandsPath, { withFileTypes: true });
+async function loadCommands(dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
 
-for (const dirent of commandFiles) {
-  // Si c’est un dossier (ex: "admin"), on entre dedans
-  if (dirent.isDirectory()) {
-    const subPath = path.join(commandsPath, dirent.name);
-    const subFiles = fs.readdirSync(subPath).filter(file => file.endsWith('.js'));
-    for (const file of subFiles) {
-      const filePath = path.join(subPath, file);
-      const command = await import(`./commands/${dirent.name}/${file}`);
-      client.commands.set(command.data.name, command);
+    if (entry.isDirectory()) {
+      await loadCommands(fullPath);
+    } else if (entry.name.endsWith('.js')) {
+      // Convert full file path to a file:// URL, ensuring ESM loader accepts it
+      const fileUrl = pathToFileURL(fullPath).href;
+      const module = await import(fileUrl);
+      if (module.data && module.execute) {
+        client.commands.set(module.data.name, module);
+      }
     }
-  } else if (dirent.name.endsWith('.js')) {
-    const filePath = path.join(commandsPath, dirent.name);
-    const command = await import(`./commands/${dirent.name}`);
-    client.commands.set(command.data.name, command);
   }
 }
 
-// 2. Enregistrer les slash commands (local guild, pour dev rapide)
-async function registerCommands() {
-  const commands = [];
-  for (const command of client.commands.values()) {
-    commands.push(command.data.toJSON());
-  }
+// Immediately load all commands at startup
+await loadCommands(commandsPath);
 
+// 3) When the bot is ready, register slash commands (guild-only for development)
+client.once('ready', async () => {
+  console.log(`🤖 Logged in as ${client.user.tag}`);
+
+  // Gather all command JSON data
+  const commandJSONs = [];
+  client.commands.forEach(cmdModule => {
+    commandJSONs.push(cmdModule.data.toJSON());
+  });
+
+  // Register them on the specified guild
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
-    console.log(`🔄 Registration des commandes sur le serveur GUILD_ID=${process.env.GUILD_ID}...`);
+    console.log('🔄 Registering guild commands...');
     await rest.put(
       Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-      { body: commands }
+      { body: commandJSONs }
     );
-    console.log('✅ Commandes enregistrées (guild only).');
-  } catch (error) {
-    console.error('❌ Erreur lors de l’enregistrement des commandes :', error);
+    console.log('✅ Commands registered.');
+  } catch (err) {
+    console.error('❌ Error registering commands:', err);
   }
-}
-
-client.once('ready', async () => {
-  console.log(`🤖 Connecté en tant que ${client.user.tag}`);
-  await registerCommands();
 });
 
-// 3. Handler des interactions (slash commands)
+// 4) Delegate all incoming interactions (slash commands & buttons) to our handler
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
-  try {
-    await command.execute(interaction, client);
-  } catch (error) {
-    console.error(error);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: '❌ Une erreur est survenue lors de l’exécution de la commande.', ephemeral: true });
-    } else {
-      await interaction.reply({ content: '❌ Une erreur est survenue lors de l’exécution de la commande.', ephemeral: true });
-    }
-  }
+  await interactionHandler(interaction, client);
 });
 
-// 4. Démarrer le bot et connecter la base de données
+// 5) Connect to MongoDB then log in the bot
 (async () => {
   await connectDatabase();
   await client.login(process.env.DISCORD_TOKEN);

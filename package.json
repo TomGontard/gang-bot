@@ -2,7 +2,7 @@
   "name": "gang-bot",
   "version": "1.0.0",
   "main": "index.js",
-  "type":"module",
+  "type": "module",
   "scripts": {
     "dev": "nodemon src/bot.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -15,6 +15,7 @@
     "@discordjs/builders": "^1.11.2",
     "discord.js": "^14.19.3",
     "dotenv": "^16.5.0",
+    "ethers": "^6.14.3",
     "mongoose": "^8.15.1"
   },
   "devDependencies": {
