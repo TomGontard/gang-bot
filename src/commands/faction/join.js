@@ -7,6 +7,17 @@ import {
   assignFactionToPlayer,
   getFactionByName
 } from '../../services/factionService.js';
+import metrics from '../../config/metrics.js';
+
+const ROLE_RED_ID   = process.env.ROLE_RED_FACTION_ID;
+const ROLE_BLUE_ID  = process.env.ROLE_BLUE_FACTION_ID;
+const ROLE_GREEN_ID = process.env.ROLE_GREEN_FACTION_ID;
+
+const FACTION_ROLE_MAP = {
+  Red: ROLE_RED_ID,
+  Blue: ROLE_BLUE_ID,
+  Green: ROLE_GREEN_ID
+};
 
 export const data = new SlashCommandBuilder()
   .setName('faction-join')
@@ -27,7 +38,7 @@ export async function execute(interaction) {
   const discordId = interaction.user.id;
   const chosenName = interaction.options.getString('name');
 
-  // 1) Check that user has at least 1 Genesis NFT
+  // 1) Check NFT requirement
   const nftCount = await getNFTCount(discordId);
   if (nftCount < 1) {
     return interaction.reply({
@@ -51,8 +62,20 @@ export async function execute(interaction) {
     player = await Player.create({ discordId });
   }
 
+  // 4) Enforce join cooldown: if last change is too recent, block
+  if (player.lastFactionChange) {
+    const elapsed = Date.now() - new Date(player.lastFactionChange).getTime();
+    if (elapsed < metrics.factionChangeCooldown) {
+      const nextAllowed = new Date(player.lastFactionChange.getTime() + metrics.factionChangeCooldown);
+      return interaction.reply({
+        content: `⏳ You must wait until <t:${Math.floor(nextAllowed.getTime()/1000)}:R> before joining a faction again.`,
+        ephemeral: true
+      });
+    }
+  }
+
   try {
-    // 4) Check if joining would break the ±3 rule
+    // 5) Check the ±3 member rule
     const allowed = await canJoinFaction(chosenName);
     if (!allowed) {
       return interaction.reply({
@@ -61,13 +84,27 @@ export async function execute(interaction) {
       });
     }
 
-    // 5) Assign (or switch) faction
+    // 6) Assign (or switch) faction in DB and update lastFactionChange
     await assignFactionToPlayer(player, chosenName);
+    player.lastFactionChange = new Date();
+    await player.save();
+
+    // 7) Sync roles in Discord
+    const member = await interaction.guild.members.fetch(discordId);
+    const rolesToRemove = [ROLE_RED_ID, ROLE_BLUE_ID, ROLE_GREEN_ID].filter(r => r);
+    await member.roles.remove(rolesToRemove);
+
+    const newRoleId = FACTION_ROLE_MAP[chosenName];
+    if (newRoleId) {
+      await member.roles.add(newRoleId);
+    }
+
     return interaction.reply({
       content: `✅ You have successfully joined **${chosenName}**!`,
       ephemeral: true
     });
   } catch (err) {
+    console.error('Error in /faction join:', err);
     return interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
   }
 }

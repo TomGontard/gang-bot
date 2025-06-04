@@ -5,6 +5,7 @@ const playerSchema = new mongoose.Schema({
   discordId:        { type: String, required: true, unique: true },
   wallet:           { type: String, default: null },
   faction:          { type: String, default: null },
+  lastFactionChange:{ type: Date,   default: null },  // ← New: timestamp of last join/leave
   level:            { type: Number, default: 1 },
   xp:               { type: Number, default: 0 },
   coins:            { type: Number, default: 0 },
