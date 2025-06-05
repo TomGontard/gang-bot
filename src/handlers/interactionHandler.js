@@ -1,11 +1,11 @@
 // src/handlers/interactionHandler.js
-import Player from '../data/models/Player.js';
 import healingHandler from './buttonHandlers/healingHandler.js';
 import attributesHandler from './buttonHandlers/attributesHandler.js';
 import factionHandler from './buttonHandlers/factionHandler.js';
+import missionHandler from './buttonHandlers/missionHandler.js';
 
 export default async function interactionHandler(interaction, client) {
-  // 1️⃣ Slash Commands
+  // 1️⃣ Slash‐commands
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -28,7 +28,7 @@ export default async function interactionHandler(interaction, client) {
     return;
   }
 
-  // 2️⃣ Button or Select‐Menu Interactions
+  // 2️⃣ Button or Select‐Menu interactions
   if (interaction.isButton() || interaction.isStringSelectMenu()) {
     const [action] = interaction.customId.split(':');
 
@@ -45,6 +45,13 @@ export default async function interactionHandler(interaction, client) {
       action === 'finalFactionLeave'
     ) {
       return factionHandler(interaction, client);
+    }
+    if (
+      action === 'openMissions' ||
+      action === 'selectMission' ||
+      action === 'claimMissions'
+    ) {
+      return missionHandler(interaction, client);
     }
   }
 }

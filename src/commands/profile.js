@@ -7,7 +7,14 @@ import {
   ButtonStyle
 } from 'discord.js';
 import Player from '../data/models/Player.js';
-import { getNFTCount, getBoosts } from '../services/nftService.js';
+import {
+  getNFTCount,
+  getBoosts
+} from '../services/nftService.js';
+import {
+  getClaimableMissionsCount,
+  getActiveMissionsCount
+} from '../services/missionService.js';
 import metrics from '../config/metrics.js';
 
 export const data = new SlashCommandBuilder()
@@ -36,6 +43,10 @@ export async function execute(interaction) {
     xpToNext = `${Math.max(0, nextThreshold - player.xp)}`;
   }
 
+  // Count active and claimable missions
+  const activeCount = await getActiveMissionsCount(discordId);
+  const claimableCount = await getClaimableMissionsCount(discordId);
+
   const embed = new EmbedBuilder()
     .setColor(0xdd2e44)
     .setTitle(`🕵️‍♂️ Profile: ${interaction.user.username}`)
@@ -54,7 +65,7 @@ export async function execute(interaction) {
       { name: '❤️‍🩹 HP', value: `${player.hp}/${player.hpMax}`, inline: true },
       {
         name: '🔑 NFTs',
-        value: `${nftCount} (Max missions: ${maxConcurrentMissions})`,
+        value: `${nftCount} (Max missions: ${nftCount})`,
         inline: true
       },
       {
@@ -62,6 +73,16 @@ export async function execute(interaction) {
         value:
           `• XP Boost: ${(xpBoost * 100).toFixed(0)}%\n` +
           `• Coins Boost: ${(coinsBoost * 100).toFixed(0)}%`,
+        inline: true
+      },
+      {
+        name: '🎯 Active Missions',
+        value: `${activeCount}`,
+        inline: true
+      },
+      {
+        name: '📬 Claimable Missions',
+        value: `${claimableCount}`,
         inline: true
       },
       {
@@ -86,7 +107,7 @@ export async function execute(interaction) {
     })
     .setTimestamp();
 
-  // ---------- Buttons ----------
+  // Row1: Attributes | Healing | Missions | Factions
   const attrBtn = new ButtonBuilder()
     .setCustomId(`openAttributes:${discordId}`)
     .setLabel('Attributes')
@@ -97,16 +118,38 @@ export async function execute(interaction) {
     .setLabel('Healing')
     .setStyle(ButtonStyle.Success);
 
+  const missionBtn = new ButtonBuilder()
+    .setCustomId(`openMissions:${discordId}`)
+    .setLabel('Missions')
+    .setStyle(ButtonStyle.Primary)
+    .setDisabled(nftCount < 3); // need ≥3 NFTs
+
   const factionBtn = new ButtonBuilder()
     .setCustomId(`openFactions:${discordId}`)
     .setLabel('Factions')
     .setStyle(ButtonStyle.Secondary);
 
-  const row = new ActionRowBuilder().addComponents(attrBtn, healingBtn, factionBtn);
+  const row1 = new ActionRowBuilder().addComponents(
+    attrBtn,
+    healingBtn,
+    missionBtn,
+    factionBtn
+  );
+
+  // Row2: Claim Missions (if any)
+  const components = [row1];
+  if (claimableCount > 0) {
+    const claimBtn = new ButtonBuilder()
+      .setCustomId(`claimMissions:${discordId}`)
+      .setLabel(`Claim Missions (${claimableCount})`)
+      .setStyle(ButtonStyle.Primary);
+    const row2 = new ActionRowBuilder().addComponents(claimBtn);
+    components.push(row2);
+  }
 
   return interaction.reply({
     embeds: [embed],
-    components: [row],
+    components,
     ephemeral: true
   });
 }
