@@ -4,6 +4,26 @@ import missionsConfig from '../config/missions.js';
 import Player from '../data/models/Player.js';
 import { addExperience } from './experienceService.js';
 import { getNFTCount } from './nftService.js';
+import metrics from '../config/metrics.js';
+
+/**
+ * Given an NFT count, return maxConcurrentMissions from metrics.nftBoosts
+ */
+export async function getMaxConcurrentMissions(nftCount) {
+  const boostEntries = Object.entries(metrics.nftBoosts)
+    .map(([k, v]) => [parseInt(k), v.maxConcurrentMissions])
+    .sort((a, b) => a[0] - b[0]);
+
+  let maxMissions = 0;
+  for (const [keyCount, maxConc] of boostEntries) {
+    if (nftCount >= keyCount) {
+      maxMissions = maxConc;
+    } else {
+      break;
+    }
+  }
+  return maxMissions;
+}
 
 /**
  * getReservedHp(discordId)
@@ -83,15 +103,16 @@ export async function startMission({ discordId, missionType }) {
 
   // 3) Check NFT count
   const nftCount = await getNFTCount(discordId);
-  if (nftCount < 3) {
-    throw new Error('You need at least 3 Genesis NFTs to start a mission.');
+  const maxConcurrent = getMaxConcurrentMissions(nftCount);
+  if (maxConcurrent < 1) {
+    throw new Error('Your NFT count bracket does not permit any concurrent missions.');
   }
 
-  // 4) Check active missions vs NFT count
+  // 4) Check active missions vs maxConcurrent
   const activeCount = await getActiveMissionsCount(discordId);
-  if (activeCount >= nftCount) {
+  if (activeCount >= maxConcurrent) {
     throw new Error(
-      `You already have ${activeCount} active mission(s), which equals or exceeds your NFT count (${nftCount}). ` +
+      `You already have ${activeCount} active mission(s), which ℹ️ is at your maximum (${maxConcurrent}). ` +
       'Finish or claim at least one mission before starting another.'
     );
   }
@@ -149,9 +170,6 @@ export async function startMission({ discordId, missionType }) {
 
 /**
  * claimMissionRewards(discordId)
- * - Finds all ActiveMission where endAt <= now and claimed=false.
- * - Subtracts m.hpCost from player.hp (min 0), adds XP/coins, marks claimed.
- * - Returns summaries.
  */
 export async function claimMissionRewards(discordId) {
   const now = new Date();

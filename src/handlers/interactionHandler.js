@@ -5,7 +5,7 @@ import factionHandler from './buttonHandlers/factionHandler.js';
 import missionHandler from './buttonHandlers/missionHandler.js';
 
 export default async function interactionHandler(interaction, client) {
-  // 1️⃣ Slash‐commands
+  // 1️⃣ Slash commands
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -48,10 +48,12 @@ export default async function interactionHandler(interaction, client) {
     }
     if (
       action === 'openMissions' ||
+      action === 'launchMission' ||
+      action === 'viewMissions' ||
       action === 'selectMission' ||
       action === 'claimMissions'
     ) {
-      return missionHandler(interaction, client);
+      return missionHandler(interaction);
     }
   }
 }
