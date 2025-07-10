@@ -1,13 +1,8 @@
 // src/handlers/buttonHandlers/missionHandler.js
-import {
-  EmbedBuilder,
-  ActionRowBuilder,
-  StringSelectMenuBuilder,
-  ButtonBuilder,
-  ButtonStyle
-} from 'discord.js';
+import { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import Player from '../../data/models/Player.js';
 import metrics from '../../config/metrics.js';
+import { createEmbed } from '../../utils/createEmbed.js';
 import {
   startMission,
   getReservedHp,
@@ -25,14 +20,11 @@ const VIEW_MISSIONS_PREFIX  = 'viewMissions';
 const SELECT_MISSION_PREFIX = 'selectMission';
 const CLAIM_MISSIONS_PREFIX = 'claimMissions';
 
-/** buildProgressBar(percent): simple 10-segment text bar */
 function buildProgressBar(percent) {
   const totalSegments = 10;
   const filledCount = Math.floor((percent / 100) * totalSegments);
   const emptyCount = totalSegments - filledCount;
-  const filled = '█'.repeat(filledCount);
-  const empty = '░'.repeat(emptyCount);
-  return `\`${filled}${empty}\` ${percent.toFixed(0)}%`;
+  return `\`${'█'.repeat(filledCount)}${'░'.repeat(emptyCount)}\` ${percent.toFixed(0)}%`;
 }
 
 export default async function missionHandler(interaction) {
@@ -45,50 +37,42 @@ export default async function missionHandler(interaction) {
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  // 1) OPEN MISSION MENU
+  // 1) OPEN MENU
   if (action === OPEN_MISSIONS_PREFIX) {
     const nftCount       = await getNFTCount(discordId);
     const maxConcurrent  = await getMaxConcurrentMissions(nftCount);
     const activeCount    = await getActiveMissionsCount(discordId);
     const claimableCount = await getClaimableMissionsCount(discordId);
 
-    // XP to next level
-    const currentLevel   = player.level;
-    const nextLevel      = currentLevel + 1;
-    const nextThreshold  = metrics.levelThresholds[nextLevel] ?? null;
-    let xpToNext = '—';
-    if (nextThreshold && nextThreshold !== Infinity) {
-      xpToNext = `${Math.max(0, nextThreshold - player.xp)}`;
-    }
+    const nextThreshold  = metrics.levelThresholds[player.level + 1] ?? Infinity;
+    const xpToNext = nextThreshold !== Infinity ? `${Math.max(0, nextThreshold - player.xp)}` : '—';
 
-    const embed = new EmbedBuilder()
-      .setColor('#0099FF')
-      .setTitle('🗂️ Missions Menu')
-      .setDescription(
-        `**HP:** ${player.hp}/${player.hpMax}\n` +
-        `**XP to Next:** ${xpToNext}\n` +
-        `**NFT Count:** ${nftCount}\n` +
-        `**Max Concurrent:** ${maxConcurrent}\n` +
-        `**Active:** ${activeCount}\n` +
-        `**Claimable:** ${claimableCount}\n\n`
-      )
-      .addFields(
-        {
-          name: '▶️ Launch Mission',
-          value: activeCount < maxConcurrent
-            ? 'Click below to choose a mission to launch.'
-            : 'You have reached your maximum concurrent missions.',
-          inline: false
-        },
-        {
-          name: '⏳ Ongoing Missions',
-          value: (activeCount + claimableCount) > 0
-            ? 'Click below to view or claim your ongoing missions.'
-            : 'You have no active or completed missions.',
-          inline: false
-        }
-      )
-      .setTimestamp();
+    const description =
+      `**HP:** ${player.hp}/${player.hpMax}\n` +
+      `**XP to Next:** ${xpToNext}\n` +
+      `**NFT Count:** ${nftCount}\n` +
+      `**Max Concurrent:** ${maxConcurrent}\n` +
+      `**Active:** ${activeCount}\n` +
+      `**Claimable:** ${claimableCount}`;
+
+    const fields = [
+      {
+        name: '▶️ Launch Mission',
+        value: activeCount < maxConcurrent
+          ? 'Choose a mission to launch below.'
+          : '🔒 Max concurrent missions reached.',
+        inline: false
+      },
+      {
+        name: '⏳ Ongoing Missions',
+        value: activeCount + claimableCount > 0
+          ? 'View or claim below.'
+          : 'No active or completed missions.',
+        inline: false
+      }
+    ];
+
+    const embed = createEmbed({ title: '🗂️ Missions Menu', description, fields, interaction });
 
     const launchBtn = new ButtonBuilder()
       .setCustomId(`${LAUNCH_MISSION_PREFIX}:${discordId}`)
@@ -102,174 +86,112 @@ export default async function missionHandler(interaction) {
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(activeCount + claimableCount === 0);
 
-    return interaction.reply({
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(launchBtn, viewBtn)],
-      ephemeral: true
-    });
+    return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(launchBtn, viewBtn)], ephemeral: true });
   }
 
-  // 2) LAUNCH MISSION (show select-menu)
+  // 2) LAUNCH
   if (action === LAUNCH_MISSION_PREFIX) {
     const nftCount = await getNFTCount(discordId);
     if (nftCount < 3) {
-      return interaction.reply({ content: '❌ You need at least 3 Genesis NFTs to launch missions.', ephemeral: true });
+      const embed = createEmbed({ title: '❌ Cannot Launch', description: 'Need at least 3 NFTs to launch missions.', interaction });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
     const maxConcurrent = await getMaxConcurrentMissions(nftCount);
     const activeCount   = await getActiveMissionsCount(discordId);
     if (activeCount >= maxConcurrent) {
-      return interaction.reply({
-        content: `❌ You already have ${activeCount} active missions (max ${maxConcurrent}).`,
-        ephemeral: true
-      });
+      const embed = createEmbed({ title: '🔒 Max Missions', description: `You have ${activeCount}/${maxConcurrent}.`, interaction });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    const reservedHp   = await getReservedHp(discordId);
-    const availableHp  = player.hp - reservedHp;
+    const reservedHp  = await getReservedHp(discordId);
+    const availableHp = player.hp - reservedHp;
 
-    const options = [];
-    for (const [key, def] of Object.entries(missionsConfig)) {
-      if (player.level < def.minLevel) continue;
-      const worstCost = Math.max(
-        1,
-        Math.floor(def.hpCostRange[1] * (1 - player.attributes.agilite * 0.01))
-      );
-      if (availableHp < worstCost) continue;
-
+    const options = Object.entries(missionsConfig).flatMap(([key, def]) => {
+      if (player.level < def.minLevel) return [];
+      const worstCost = Math.max(1, Math.floor(def.hpCostRange[1] * (1 - player.attributes.agilite * 0.01)));
+      if (availableHp < worstCost) return [];
       const durationH = Math.floor(def.durationMs / 3_600_000);
-      options.push({
-        label: def.displayName,
-        description: `Lvl ≥${def.minLevel} | ${durationH}h | HP [${def.hpCostRange[0]}–${def.hpCostRange[1]}]`,
-        value: key
-      });
-    }
+      return [{ label: def.displayName, description: `Lvl≥${def.minLevel} • ${durationH}h • HP ${def.hpCostRange[0]}–${def.hpCostRange[1]}`, value: key }];
+    });
 
-    if (options.length === 0) {
-      return interaction.reply({
-        content: '❌ No missions available (level too low or insufficient HP).',
-        ephemeral: true
-      });
+    if (!options.length) {
+      const embed = createEmbed({ title: '❌ No Missions', description: 'Level too low or insufficient HP.', interaction });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
     const selectMenu = new StringSelectMenuBuilder()
       .setCustomId(`${SELECT_MISSION_PREFIX}:${discordId}`)
-      .setPlaceholder('Select a mission to launch')
-      .setMinValues(1)
-      .setMaxValues(1)
+      .setPlaceholder('Select a mission')
       .addOptions(options);
 
-    const embed = new EmbedBuilder()
-      .setColor('#0099FF')
-      .setTitle('🚀 Choose a Mission')
-      .setDescription(
-        `HP: **${player.hp}**  |  Reserved: **${reservedHp}**  |  Available: **${availableHp}**\n` +
-        `Active Missions: **${activeCount} / ${maxConcurrent}**`
-      )
-      .setTimestamp();
-
+    const embed = createEmbed({ title: '🚀 Choose a Mission', description: `Available HP: ${availableHp}`, interaction });
     return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu)], ephemeral: true });
   }
 
-  // 3) VIEW ONGOING MISSIONS
+  // 3) VIEW
   if (action === VIEW_MISSIONS_PREFIX) {
     const activeCount    = await getActiveMissionsCount(discordId);
     const claimableCount = await getClaimableMissionsCount(discordId);
-
     if (activeCount + claimableCount === 0) {
-      return interaction.reply({ content: 'ℹ️ You have no active or completed missions.', ephemeral: true });
+      const embed = createEmbed({ title: 'ℹ️ No Missions', description: 'Nothing to view or claim.', interaction });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#00AAFF')
-      .setTitle('⏳ Ongoing Missions')
-      .setTimestamp();
-
-    if (activeCount > 0) {
+    let embed = createEmbed({ title: '⏳ Ongoing Missions', description: '', interaction });
+    if (activeCount) {
       const now = Date.now();
       const ActiveMission = (await import('../../data/models/ActiveMission.js')).default;
-      const activeMissions = await ActiveMission.find({
-        discordId,
-        endAt: { $gt: now },
-        claimed: false
-      }).lean();
-
+      const activeMissions = await ActiveMission.find({ discordId, endAt: { $gt: now }, claimed: false }).lean();
       for (const m of activeMissions) {
-        const def         = missionsConfig[m.missionType] || {};
-        const missionName = def.displayName || m.missionType;
-        const startMs     = new Date(m.startAt).getTime();
-        const endMs       = new Date(m.endAt).getTime();
-        const percent     = Math.min(100, Math.max(0, ((now - startMs) / (endMs - startMs)) * 100));
-        const progressBar = buildProgressBar(percent);
-
-        embed.addFields({
-          name: missionName,
-          value:
-            `• **Ends in**: <t:${Math.floor(endMs / 1000)}:R>\n` +
-            `• **HP Cost**: ${m.hpCost}\n` +
-            `• **Rewards**: ${m.xpReward} XP, ${m.coinReward} coins\n` +
-            `• **Progress**: ${progressBar}`,
-          inline: false
-        });
+        const def = missionsConfig[m.missionType] || {};
+        const start = m.startAt.getTime(), end = m.endAt.getTime();
+        const percent = Math.min(100, ((now - start) / (end - start)) * 100);
+        embed.addFields({ name: def.displayName, value: `Ends <t:${Math.floor(end/1000)}:R>
+HP Cost: ${m.hpCost}
+Progress: ${buildProgressBar(percent)}`, inline: false });
       }
     }
-
     const components = [];
-    if (claimableCount > 0) {
-      const claimBtn = new ButtonBuilder()
-        .setCustomId(`${CLAIM_MISSIONS_PREFIX}:${discordId}`)
-        .setLabel(`Claim Missions (${claimableCount})`)
-        .setStyle(ButtonStyle.Primary);
+    if (claimableCount) {
+      const claimBtn = new ButtonBuilder().setCustomId(`${CLAIM_MISSIONS_PREFIX}:${discordId}`).setLabel(`Claim (${claimableCount})`).setStyle(ButtonStyle.Primary);
       components.push(new ActionRowBuilder().addComponents(claimBtn));
     }
-
     return interaction.reply({ embeds: [embed], components, ephemeral: true });
   }
 
-  // 4) SELECT MISSION (launch)
+  // 4) SELECT (START)
   if (action === SELECT_MISSION_PREFIX) {
     const missionType = interaction.values[0];
     try {
-      const am  = await startMission({ discordId, missionType });
+      const am = await startMission({ discordId, missionType });
       const def = missionsConfig[missionType];
-
-      const embed = new EmbedBuilder()
-        .setColor('#00FF00')
-        .setTitle(`✅ Mission Started: ${def.displayName}`)
-        .setDescription(`HP deducted: **${am.hpCost}** (remaining: **${player.hp-am.hpCost}**).`)
-        .addFields(
-          { name: 'Mission',     value: def.displayName, inline: true },
-          { name: 'Starts at',   value: `<t:${Math.floor(am.startAt.getTime()/1000)}:f>`, inline: true },
-          { name: 'Ends at',     value: `<t:${Math.floor(am.endAt.getTime()/1000)}:f>`, inline: true },
-          { name: 'XP Reward',   value: `${am.xpReward}`, inline: true },
-          { name: 'Coins Reward',value: `${am.coinReward}`, inline: true },
-          { name: 'HP Cost',     value: `${am.hpCost}`, inline: true }
-        )
-        .setFooter({ text: 'Use “Ongoing Missions” to view or claim.' })
-        .setTimestamp();
-
+      const description = `HP deducted: **${am.hpCost}**`;
+      const fields = [
+        { name: 'Mission', value: def.displayName, inline: true },
+        { name: 'Starts',  value: `<t:${Math.floor(am.startAt.getTime()/1000)}:f>`, inline: true },
+        { name: 'Ends',    value: `<t:${Math.floor(am.endAt.getTime()/1000)}:f>`, inline: true },
+        { name: 'XP',      value: `${am.xpReward}`, inline: true },
+        { name: 'Coins',   value: `${am.coinReward}`, inline: true }
+      ];
+      const embed = createEmbed({ title: '✅ Mission Started', description, fields, interaction });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     } catch (err) {
-      console.error('Error in selectMission:', err);
-      return interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
+      const embed = createEmbed({ title: '❌ Error', description: err.message, interaction });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   }
 
-  // 5) CLAIM MISSIONS
+  // 5) CLAIM
   if (action === CLAIM_MISSIONS_PREFIX) {
     try {
       const results = await claimMissionRewards(discordId);
-      let content = '🎉 You claimed the following rewards:\n';
-      for (const r of results) {
-        content += `• **${r.missionType}** → ${r.xpReward} XP, ${r.coinReward} coins`;
-        if (r.levelsGained > 0) {
-          content += ` 🆙 Leveled up +${r.levelsGained}! Next at ${r.nextLevelXp} XP.`;
-        }
-        content += '\n';
-      }
-      return interaction.reply({ content, ephemeral: true });
+      const description = results.map(r => `• **${r.missionType}** → ${r.xpReward} XP, ${r.coinReward} coins${r.levelsGained ? `, +${r.levelsGained} lvl` : ''}`).join('\n');
+      const embed = createEmbed({ title: '🎉 Missions Claimed', description, interaction });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     } catch (err) {
-      return interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
+      const embed = createEmbed({ title: '❌ Error', description: err.message, interaction });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   }
 }
