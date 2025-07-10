@@ -14,15 +14,9 @@ export default async function interactionHandler(interaction, client) {
     } catch (err) {
       console.error('Error executing command:', err);
       if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({
-          content: '❌ Error executing command.',
-          ephemeral: true
-        });
+        await interaction.followUp({ content: '❌ Error executing command.', ephemeral: true });
       } else {
-        await interaction.reply({
-          content: '❌ Error executing command.',
-          ephemeral: true
-        });
+        await interaction.reply({ content: '❌ Error executing command.', ephemeral: true });
       }
     }
     return;
@@ -32,11 +26,13 @@ export default async function interactionHandler(interaction, client) {
   if (interaction.isButton() || interaction.isStringSelectMenu()) {
     const [action] = interaction.customId.split(':');
 
-    if (action === 'startHealing' || action === 'stopHealing' || action === 'openHealing') {
-      return healingHandler(interaction);
+    if (action === 'openHealing' || action === 'startHealing' || action === 'stopHealing') {
+      await healingHandler(interaction);
+      return;
     }
     if (action === 'openAttributes' || action === 'attrAdd') {
-      return attributesHandler(interaction);
+      await attributesHandler(interaction);
+      return;
     }
     if (
       action === 'openFactions' ||
@@ -44,7 +40,8 @@ export default async function interactionHandler(interaction, client) {
       action === 'confirmFactionLeave' ||
       action === 'finalFactionLeave'
     ) {
-      return factionHandler(interaction, client);
+      await factionHandler(interaction);
+      return;
     }
     if (
       action === 'openMissions' ||
@@ -53,7 +50,8 @@ export default async function interactionHandler(interaction, client) {
       action === 'selectMission' ||
       action === 'claimMissions'
     ) {
-      return missionHandler(interaction);
+      await missionHandler(interaction);
+      return;
     }
   }
 }

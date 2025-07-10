@@ -28,7 +28,8 @@ function buildProgressBar(percent) {
 export default async function missionHandler(interaction) {
   const [action, targetId] = interaction.customId.split(':');
   if (interaction.user.id !== targetId) {
-    return interaction.reply({ content: '❌ You cannot manage missions for another user.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    return interaction.editReply({ content: '❌ You cannot manage missions for another user.' });
   }
 
   const discordId = targetId;
@@ -38,15 +39,17 @@ export default async function missionHandler(interaction) {
   // Common data
   const nftCount = await getNFTCount(discordId);
   const { xpBoost: nftXpBoost, coinsBoost: nftCoinBoost } = getBoosts(nftCount);
-  const wisdomBoost = player.attributes.sagesse;    // % XP per wisdom
-  const luckBoost   = player.attributes.chance;     // % coins per luck
-  const agilityReduction = player.attributes.agilite; // % HP cost reduction
+  const wisdomBoost = player.attributes.sagesse;
+  const luckBoost   = player.attributes.chance;
+  const agilityReduction = player.attributes.agilite;
   const maxConcurrent    = await getMaxConcurrentMissions(nftCount);
   const activeCount      = await getActiveMissionsCount(discordId);
   const claimableCount   = await getClaimableMissionsCount(discordId);
 
   // 1) OPEN MENU
   if (action === OPEN_MISSIONS_PREFIX) {
+    await interaction.deferReply({ ephemeral: true });
+
     const availableMissions = Object.values(missionsConfig)
       .filter(def => player.level >= def.minLevel)
       .map(def => `${def.displayName} (Lvl≥${def.minLevel})`);
@@ -69,7 +72,6 @@ export default async function missionHandler(interaction) {
       .setCustomId(`${LAUNCH_MISSION_PREFIX}:${discordId}`)
       .setLabel('Launch Mission')
       .setStyle(ButtonStyle.Primary)
-      // maintenant < 1 NFT bloque le bouton
       .setDisabled(activeCount >= maxConcurrent || nftCount < 1);
 
     const viewBtn = new ButtonBuilder()
@@ -78,50 +80,32 @@ export default async function missionHandler(interaction) {
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(activeCount + claimableCount === 0);
 
-    return interaction.reply({
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(launchBtn, viewBtn)],
-      ephemeral: true
-    });
+    return interaction.editReply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(launchBtn, viewBtn)] });
   }
 
   // 2) LAUNCH SELECT
   if (action === LAUNCH_MISSION_PREFIX) {
-    // Nouvelle vérification : il faut au moins 1 NFT
+    await interaction.deferReply({ ephemeral: true });
     if (nftCount < 1) {
-      const errEmbed = createEmbed({
-        title: '❌ Cannot Launch',
-        description: 'You need at least **1 Genesis Pass NFT** to start missions.',
-        interaction
-      });
-      return interaction.reply({ embeds: [errEmbed], ephemeral: true });
+      const errEmbed = createEmbed({ title: '❌ Cannot Launch', description: 'You need at least **1 Genesis Pass NFT** to start missions.', interaction });
+      return interaction.editReply({ embeds: [errEmbed] });
     }
 
-    const availableHp = player.hp; // HP réel, car on déduit au démarrage
-
+    const availableHp = player.hp;
     const options = Object.entries(missionsConfig)
       .filter(([_, def]) => player.level >= def.minLevel)
       .map(([key, def]) => {
-        // coût réduit par Agilité
         const rawCost = def.hpCostRange[1];
         const cost = Math.max(1, Math.floor(rawCost * (1 - agilityReduction * 0.01)));
         return availableHp >= cost
-          ? {
-              label: def.displayName,
-              description: `Lvl≥${def.minLevel} • ${Math.floor(def.durationMs / 3600000)}h • HP ${def.hpCostRange[0]}–${def.hpCostRange[1]}`,
-              value: key
-            }
+          ? { label: def.displayName, description: `Lvl≥${def.minLevel} • ${Math.floor(def.durationMs / 3600000)}h • HP ${def.hpCostRange[0]}–${def.hpCostRange[1]}`, value: key }
           : null;
       })
       .filter(Boolean);
 
     if (!options.length) {
-      const embed = createEmbed({
-        title: '❌ No Missions',
-        description: 'Level too low or insufficient HP.',
-        interaction
-      });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      const noEmbed = createEmbed({ title: '❌ No Missions', description: 'Level too low or insufficient HP.', interaction });
+      return interaction.editReply({ embeds: [noEmbed] });
     }
 
     const selectMenu = new StringSelectMenuBuilder()
@@ -129,68 +113,44 @@ export default async function missionHandler(interaction) {
       .setPlaceholder('Select a mission')
       .addOptions(options);
 
-    const embed = createEmbed({
-      title: '🚀 Choose a Mission',
-      description: `Available HP: ${availableHp}`,
-      fields: [
-        { name: 'Mission Types Available', value: `${options.length}`, inline: true }
-      ],
-      interaction
-    });
-
-    return interaction.reply({
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(selectMenu)],
-      ephemeral: true
-    });
+    const embed2 = createEmbed({ title: '🚀 Choose a Mission', description: `Available HP: ${availableHp}`, fields: [{ name: 'Types Available', value: `${options.length}`, inline: true }], interaction });
+    return interaction.editReply({ embeds: [embed2], components: [new ActionRowBuilder().addComponents(selectMenu)] });
   }
 
   // 3) VIEW ONGOING
   if (action === VIEW_MISSIONS_PREFIX) {
+    await interaction.deferUpdate();
     const activeMissions    = await getActiveMissionsCount(discordId);
     const completedMissions = await getClaimableMissionsCount(discordId);
     if (!activeMissions && !completedMissions) {
-      const embed = createEmbed({
-        title: 'ℹ️ No Missions',
-        description: 'Nothing active or to claim.',
-        interaction
-      });
-      return interaction.update({ embeds: [embed], components: [] });
+      const noEmbed = createEmbed({ title: 'ℹ️ No Missions', description: 'Nothing active or to claim.', interaction });
+      return interaction.editReply({ embeds: [noEmbed], components: [] });
     }
 
-    const embed = createEmbed({ title: '⏳ Ongoing Missions', interaction });
+    const embed3 = createEmbed({ title: '⏳ Ongoing Missions', interaction });
     if (activeMissions) {
       const now = Date.now();
       const ActiveMission = (await import('../../data/models/ActiveMission.js')).default;
-      const list = await ActiveMission
-        .find({ discordId, endAt: { $gt: now }, claimed: false })
-        .lean();
-
+      const list = await ActiveMission.find({ discordId, endAt: { $gt: now }, claimed: false }).lean();
       list.forEach(m => {
         const def = missionsConfig[m.missionType] || {};
         const start = m.startAt.getTime(), end = m.endAt.getTime();
         const percent = Math.min(100, ((now - start) / (end - start)) * 100);
-        embed.addFields({
-          name: def.displayName,
-          value: `Ends <t:${Math.floor(end / 1000)}:R> • HP Cost: ${m.hpCost} • ${buildProgressBar(percent)}`,
-          inline: false
-        });
+        embed3.addFields({ name: def.displayName, value: `Ends <t:${Math.floor(end / 1000)}:R> • HP Cost: ${m.hpCost} • ${buildProgressBar(percent)}`, inline: false });
       });
     }
 
     const components = [];
     if (completedMissions) {
-      const claimBtn = new ButtonBuilder()
-        .setCustomId(`${CLAIM_MISSIONS_PREFIX}:${discordId}`)
-        .setLabel(`Claim (${completedMissions})`)
-        .setStyle(ButtonStyle.Primary);
+      const claimBtn = new ButtonBuilder().setCustomId(`${CLAIM_MISSIONS_PREFIX}:${discordId}`).setLabel(`Claim (${completedMissions})`).setStyle(ButtonStyle.Primary);
       components.push(new ActionRowBuilder().addComponents(claimBtn));
     }
-    return interaction.update({ embeds: [embed], components });
+    return interaction.editReply({ embeds: [embed3], components });
   }
 
-  // 4) SELECT & START MISSION
+  // 4) SELECT & START
   if (action === SELECT_MISSION_PREFIX) {
+    await interaction.deferReply({ ephemeral: true });
     const missionType = interaction.values[0];
     try {
       const am  = await startMission({ discordId, missionType });
@@ -203,26 +163,25 @@ export default async function missionHandler(interaction) {
         { name: 'XP',      value: `${am.xpReward}`, inline: true },
         { name: 'Coins',   value: `${am.coinReward}`, inline: true }
       ];
-      const embed = createEmbed({ title: '✅ Mission Started', description, fields, interaction });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      const embed4 = createEmbed({ title: '✅ Mission Started', description, fields, interaction });
+      return interaction.editReply({ embeds: [embed4] });
     } catch (err) {
-      const embed = createEmbed({ title: '❌ Error', description: err.message, interaction });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      const errEmbed = createEmbed({ title: '❌ Error', description: err.message, interaction });
+      return interaction.editReply({ embeds: [errEmbed] });
     }
   }
 
   // 5) CLAIM REWARDS
   if (action === CLAIM_MISSIONS_PREFIX) {
+    await interaction.deferReply({ ephemeral: true });
     try {
       const results = await claimMissionRewards(discordId);
-      const description = results
-        .map(r => `• **${r.missionType}** → ${r.xpReward} XP, ${r.coinReward} coins${r.levelsGained ? `, +${r.levelsGained} lvl` : ''}`)
-        .join('\n');
-      const embed = createEmbed({ title: '🎉 Missions Claimed', description, interaction });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      const description = results.map(r => `• **${r.missionType}** → ${r.xpReward} XP, ${r.coinReward} coins${r.levelsGained ? `, +${r.levelsGained} lvl` : ''}`).join('\n');
+      const embed5 = createEmbed({ title: '🎉 Missions Claimed', description, interaction });
+      return interaction.editReply({ embeds: [embed5] });
     } catch (err) {
-      const embed = createEmbed({ title: '❌ Error', description: err.message, interaction });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      const errEmbed = createEmbed({ title: '❌ Error', description: err.message, interaction });
+      return interaction.editReply({ embeds: [errEmbed] });
     }
   }
 }

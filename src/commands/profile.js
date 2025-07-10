@@ -38,18 +38,17 @@ export async function execute(interaction) {
     { name: '🏷️ Faction',             value: factionDisplay, inline: true },
     { name: '📈 Level',               value: `${player.level}`, inline: true },
     // Spacer
-    { name: '​',                 value: '​', inline: false },
+    { name: '​',                       value: '​', inline: false },
     { name: '🗡️ XP',                 value: `${player.xp}${xpToNext !== '—' ? ` (Next ${xpToNext})` : ''}`, inline: true },
     { name: '💰 Coins',               value: `${player.coins}`, inline: true },
     { name: '❤️‍🩹 HP',                value: `${player.hp}/${player.hpMax}`, inline: true },
     // Spacer
-    { name: '​',                 value: '​', inline: false },
+    { name: '​',                       value: '​', inline: false },
     { name: '🔑 NFTs',                value: `${nftCount} (Max: ${maxConcurrent})`, inline: true },
-    { name: '📊 Boosts',              value: `• XP: ${(xpBoost*100).toFixed(0)}%
-• Coins: ${(coinsBoost*100).toFixed(0)}%`, inline: true },
+    { name: '📊 Boosts',              value: `• XP: ${(xpBoost*100).toFixed(0)}%\n• Coins: ${(coinsBoost*100).toFixed(0)}%`, inline: true },
     { name: '🎯 Active Missions',      value: `${activeCount} / ${maxConcurrent}`, inline: true },
     // Spacer
-    { name: '​',                 value: '​', inline: false },
+    { name: '​',                       value: '​', inline: false },
     { name: '📬 Claimable Missions',  value: `${claimableCount}`, inline: true },
     { name: '⚙️ Unassigned Points',   value: `${player.unassignedPoints}`, inline: true }
   ];

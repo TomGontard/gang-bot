@@ -9,13 +9,15 @@ const ATTRIB_ADD_PREFIX = 'attrAdd';
 export default async function attributesHandler(interaction) {
   const [action, targetId, attribute] = interaction.customId.split(':');
   if (interaction.user.id !== targetId) {
-    return interaction.reply({ content: '❌ You cannot manage attributes for another user.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    return interaction.editReply({ content: '❌ You cannot manage attributes for another user.' });
   }
 
   const discordId = targetId;
-  const player = await Player.findOne({ discordId });
+  let player = await Player.findOne({ discordId });
   if (!player) {
-    return interaction.reply({ content: '❌ Player not found.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    return interaction.editReply({ content: '❌ Player not found.' });
   }
 
   function buildAttributeEmbedAndButtons() {
@@ -50,29 +52,33 @@ export default async function attributesHandler(interaction) {
     return { embed, rows: [row1, row2] };
   }
 
+  // OPEN ATTRIBUTES MENU
   if (action === 'openAttributes') {
+    await interaction.deferReply({ ephemeral: true });
     const { embed, rows } = buildAttributeEmbedAndButtons();
-    return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+    return interaction.editReply({ embeds: [embed], components: rows });
   }
 
+  // ADD POINT TO ATTRIBUTE
   if (action === ATTRIB_ADD_PREFIX) {
+    await interaction.deferUpdate();
     const cost = metrics.attributeCosts[attribute];
     if (player.unassignedPoints < cost) {
-      return interaction.reply({ content: '❌ You don’t have enough unassigned points.', ephemeral: true });
+      return interaction.followUp({ content: '❌ You don’t have enough unassigned points.', ephemeral: true });
     }
 
     switch (attribute) {
       case 'Vitality':      player.attributes.vitalite += 1; player.hpMax += 1; break;
-      case 'Wisdom':         player.attributes.sagesse += 1; break;
-      case 'Strength':       player.attributes.force += 1; break;
-      case 'Intelligence':   player.attributes.intelligence += 1; break;
-      case 'Luck':           player.attributes.chance += 1; break;
-      case 'Agility':        player.attributes.agilite += 1; break;
+      case 'Wisdom':        player.attributes.sagesse += 1; break;
+      case 'Strength':      player.attributes.force += 1; break;
+      case 'Intelligence':  player.attributes.intelligence += 1; break;
+      case 'Luck':          player.attributes.chance += 1; break;
+      case 'Agility':       player.attributes.agilite += 1; break;
     }
     player.unassignedPoints -= cost;
     await player.save();
 
     const { embed, rows } = buildAttributeEmbedAndButtons();
-    return interaction.update({ embeds: [embed], components: rows });
+    return interaction.editReply({ embeds: [embed], components: rows });
   }
 }

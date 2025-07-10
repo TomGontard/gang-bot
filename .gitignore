@@ -1,0 +1,19 @@
+# Node.js
+node_modules/
+.env
+.env.local
+*.log
+
+# PM2
+pids/
+*.pid
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# npm
+package-lock.json
