@@ -15,6 +15,7 @@ import {
     getPlayerFaction
   } from '../../services/factionService.js';
   import metrics from '../../config/metrics.js';
+  import factionsConfig from '../../config/factions.js';
   
   const ROLE_RED_ID   = process.env.ROLE_RED_FACTION_ID;
   const ROLE_BLUE_ID  = process.env.ROLE_BLUE_FACTION_ID;
@@ -51,25 +52,14 @@ import {
       .setPlaceholder(currentFaction ? `In ${currentFaction}` : 'Select a faction')
       .setMinValues(1)
       .setMaxValues(1)
+      // Génère dynamiquement les options depuis le config
       .addOptions(
-        {
-          label: '🔴 Red',
-          description: 'Join the Red faction',
-          value: 'Red',
-          default: currentFaction === 'Red'
-        },
-        {
-          label: '🔵 Blue',
-          description: 'Join the Blue faction',
-          value: 'Blue',
-          default: currentFaction === 'Blue'
-        },
-        {
-          label: '🟢 Green',
-          description: 'Join the Green faction',
-          value: 'Green',
-          default: currentFaction === 'Green'
-        }
+        factionsConfig.map(f => ({
+          label: f.displayName,
+          description: f.description,
+          value: f.name,
+          default: currentFaction === f.name
+        }))
       );
   
     const row1 = new ActionRowBuilder().addComponents(selectMenu);
@@ -145,15 +135,13 @@ import {
   
         // Sync roles
         const member = await interaction.guild.members.fetch(discordId);
-        const rolesToRemove = [ROLE_RED_ID, ROLE_BLUE_ID, ROLE_GREEN_ID].filter(r => r);
-        await member.roles.remove(rolesToRemove);
-        const newRoleId =
-          chosenFaction === 'Red'
-            ? ROLE_RED_ID
-            : chosenFaction === 'Blue'
-            ? ROLE_BLUE_ID
-            : ROLE_GREEN_ID;
-        if (newRoleId) await member.roles.add(newRoleId);
+        const allRoleIds = factionsConfig
+          .map(f => process.env[f.roleEnvVar])
+          .filter(Boolean);
+        await member.roles.remove(allRoleIds);
+        // Ajoute le rôle de la faction choisie
+        const roleId = process.env[factionsConfig.find(f => f.name === chosenFaction).roleEnvVar];
+        if (roleId) await member.roles.add(roleId);
   
         return interaction.reply({
           content: `✅ You have joined **${chosenFaction}**!`,
