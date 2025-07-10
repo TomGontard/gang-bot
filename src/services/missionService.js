@@ -78,11 +78,11 @@ function computeReducedHpCost(rawCost, agility) {
  * - Validates:
  *    • missionType exists
  *    • player.level >= minLevel
- *    • player holds >= 3 NFTs
- *    • activeMissionsCount < nftCount (max simultaneous)
- *    • reservedHp + worstHpCostAfterAgility <= player.hp
- * - Then randomizes raw Hp cost in range, reduces by agility, randomizes XP & coins,
- *   records ActiveMission.
+ *    • player holds ≥ 3 NFTs
+ *    • activeMissionsCount < maxConcurrent
+ *    • reservedHp + worstHpCostAfterAgility ≤ player.hp
+ * - Deducts HP immediately
+ * - Then randomizes rewards and records ActiveMission.
  */
 export async function startMission({ discordId, missionType }) {
   const missionDef = missionsConfig[missionType];
@@ -103,7 +103,7 @@ export async function startMission({ discordId, missionType }) {
 
   // 3) Check NFT count
   const nftCount = await getNFTCount(discordId);
-  const maxConcurrent = getMaxConcurrentMissions(nftCount);
+  const maxConcurrent = await getMaxConcurrentMissions(nftCount);
   if (maxConcurrent < 1) {
     throw new Error('Your NFT count bracket does not permit any concurrent missions.');
   }
@@ -112,8 +112,7 @@ export async function startMission({ discordId, missionType }) {
   const activeCount = await getActiveMissionsCount(discordId);
   if (activeCount >= maxConcurrent) {
     throw new Error(
-      `You already have ${activeCount} active mission(s), which ℹ️ is at your maximum (${maxConcurrent}). ` +
-      'Finish or claim at least one mission before starting another.'
+      `You already have ${activeCount} active mission(s), which is your maximum (${maxConcurrent}). Finish or claim at least one mission before starting another.`
     );
   }
 
@@ -128,7 +127,7 @@ export async function startMission({ discordId, missionType }) {
   if (availableHp < worstHpCost) {
     throw new Error(
       `Not enough HP available. You have ${player.hp} total, ` +
-      `${reservedHp} reserved for active missions, leaving ${availableHp}. ` +
+      `${reservedHp} reserved, leaving ${availableHp}. ` +
       `Worst-case HP cost is ${worstHpCost}.`
     );
   }
@@ -140,7 +139,11 @@ export async function startMission({ discordId, missionType }) {
     ) + missionDef.hpCostRange[0];
   const finalHpCost = computeReducedHpCost(rawHp, player.attributes.agilite);
 
-  // 8) Randomize XP and coin rewards
+  // 8) Deduct HP immediately
+  player.hp = Math.max(0, player.hp - finalHpCost);
+  await player.save();
+
+  // 9) Randomize XP and coin rewards
   const xpReward =
     Math.floor(
       Math.random() * (missionDef.xpRange[1] - missionDef.xpRange[0] + 1)
@@ -150,7 +153,7 @@ export async function startMission({ discordId, missionType }) {
       Math.random() * (missionDef.coinRange[1] - missionDef.coinRange[0] + 1)
     ) + missionDef.coinRange[0];
 
-  // 9) Create ActiveMission (no immediate HP deduction)
+  // 10) Create ActiveMission (HP already deducted)
   const now = new Date();
   const endAt = new Date(now.getTime() + missionDef.durationMs);
 
@@ -170,6 +173,8 @@ export async function startMission({ discordId, missionType }) {
 
 /**
  * claimMissionRewards(discordId)
+ * - Grants XP & coins
+ * - Marks missions as claimed (no HP deduction here)
  */
 export async function claimMissionRewards(discordId) {
   const now = new Date();
@@ -190,10 +195,6 @@ export async function claimMissionRewards(discordId) {
 
   const results = [];
   for (const m of missions) {
-    // Subtract HP cost now
-    player.hp -= m.hpCost;
-    if (player.hp < 0) player.hp = 0;
-
     // Add XP (handles level‐up)
     const { levelsGained, nextLevelXp } = await addExperience(player, m.xpReward);
 
