@@ -1,120 +1,80 @@
 // src/handlers/buttonHandlers/healingHandler.js
-import {
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle
-} from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import Player from '../../data/models/Player.js';
+import { createEmbed } from '../../utils/createEmbed.js';
 
 export default async function healingHandler(interaction) {
   const [action, targetId] = interaction.customId.split(':');
   if (interaction.user.id !== targetId) {
-    return interaction.reply({
-      content: '❌ You cannot control another user’s healing.',
-      ephemeral: true
-    });
+    return interaction.reply({ content: '❌ You cannot control another user’s healing.', ephemeral: true });
   }
 
   const discordId = interaction.user.id;
   const player = await Player.findOne({ discordId });
   if (!player) {
-    return interaction.reply({
-      content: '❌ Player not found.',
-      ephemeral: true
-    });
+    return interaction.reply({ content: '❌ Player not found.', ephemeral: true });
   }
 
-  // Calcul du bonus de healing basé sur l'attribut Intelligence
   const intStat = player.attributes.intelligence || 0;
-  const boostFactor = 1 + intStat / 100;               // 1 point INT = +1%
+  const boostFactor = 1 + intStat / 100;
   const healRateDesc = `Recover **1 HP per hour** (+${intStat}% from Intelligence).`;
 
-  // 1) openHealing: display current healing status + appropriate button
+  // OPEN HEALING MENU
   if (action === 'openHealing') {
-    const embed = new EmbedBuilder()
-      .setColor(player.healing ? 0x00ff00 : 0xff9900)
-      .setTitle(player.healing ? '🛌 Healing In Progress' : '💉 Healing Menu')
-      .setDescription(
-        player.healing
-          ? `You have been healing since <t:${Math.floor(
-              player.healStartAt.getTime() / 1000
-            )}:R>.`
-          : healRateDesc
-      )
-      .addFields({
-        name: 'Current HP',
-        value: `${player.hp}/${player.hpMax}`,
-        inline: true
-      })
-      .setTimestamp();
+    const title = player.healing ? '🛌 Healing In Progress' : '💉 Healing Menu';
+    const description = player.healing
+      ? `You have been healing since <t:${Math.floor(player.healStartAt.getTime() / 1000)}:R>.`
+      : healRateDesc;
+    const fields = [
+      { name: 'Current HP', value: `${player.hp}/${player.hpMax}`, inline: true }
+    ];
+    const color = player.healing ? 0x00ff00 : 0xff9900;
+
+    const embed = createEmbed({ title, description, fields, color, interaction });
 
     const button = new ButtonBuilder()
-      .setCustomId(
-        player.healing
-          ? `stopHealing:${discordId}`
-          : `startHealing:${discordId}`
-      )
+      .setCustomId(player.healing ? `stopHealing:${discordId}` : `startHealing:${discordId}`)
       .setLabel(player.healing ? 'Stop Healing' : 'Start Healing')
       .setStyle(player.healing ? ButtonStyle.Danger : ButtonStyle.Success);
-
     const row = new ActionRowBuilder().addComponents(button);
+
     return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
   }
 
-  // 2) startHealing
+  // START HEALING
   if (action === 'startHealing') {
     if (player.healing) {
-      return interaction.reply({
-        content: '🔄 You are already in healing mode.',
-        ephemeral: true
-      });
+      return interaction.reply({ content: '🔄 You are already in healing mode.', ephemeral: true });
     }
     player.healing = true;
     player.healStartAt = new Date();
     await player.save();
 
-    const embed = new EmbedBuilder()
-      .setColor(0x00ff00)
-      .setTitle('🛌 Healing Mode Activated')
-      .setDescription(healRateDesc)
-      .addFields(
-        {
-          name: 'Current HP',
-          value: `${player.hp}/${player.hpMax}`,
-          inline: true
-        },
-        {
-          name: 'Healing Since',
-          value: `<t:${Math.floor(
-            player.healStartAt.getTime() / 1000
-          )}:R>`,
-          inline: true
-        }
-      )
-      .setTimestamp();
+    const title = '🛌 Healing Mode Activated';
+    const description = healRateDesc;
+    const fields = [
+      { name: 'Current HP', value: `${player.hp}/${player.hpMax}`, inline: true },
+      { name: 'Healing Since', value: `<t:${Math.floor(player.healStartAt.getTime() / 1000)}:R>`, inline: true }
+    ];
+    const embed = createEmbed({ title, description, fields, interaction });
 
     const stopBtn = new ButtonBuilder()
       .setCustomId(`stopHealing:${discordId}`)
       .setLabel('Stop Healing')
       .setStyle(ButtonStyle.Danger);
-
     const row = new ActionRowBuilder().addComponents(stopBtn);
+
     return interaction.update({ embeds: [embed], components: [row] });
   }
 
-  // 3) stopHealing
+  // STOP HEALING
   if (action === 'stopHealing') {
     if (!player.healing || !player.healStartAt) {
-      return interaction.reply({
-        content: '❌ You are not currently healing.',
-        ephemeral: true
-      });
+      return interaction.reply({ content: '❌ You are not currently healing.', ephemeral: true });
     }
     const now = new Date();
     const elapsedMs = now.getTime() - new Date(player.healStartAt).getTime();
     const hoursHealed = Math.floor(elapsedMs / 3_600_000);
-    // Appliquer le boost d'intelligence
     const rawHp = Math.floor(hoursHealed * boostFactor);
     const hpGained = Math.min(rawHp, player.hpMax - player.hp);
 
@@ -123,30 +83,22 @@ export default async function healingHandler(interaction) {
     player.healStartAt = null;
     await player.save();
 
-    // Construire l'embed de fin
-    const embed = new EmbedBuilder()
-      .setColor(0xff0000)
-      .setTitle('✅ Healing Completed')
-      .setDescription(
-        `You have stopped healing and regained **${hpGained} HP** over ${hoursHealed} hour(s)\n` +
-        `(${intStat}% bonus from Intelligence).`
-      )
-      .addFields({
-        name: 'Current HP',
-        value: `${player.hp}/${player.hpMax}`,
-        inline: true
-      })
-      .setTimestamp();
+    const title = '✅ Healing Completed';
+    const description =
+      `You have stopped healing and regained **${hpGained} HP** over ${hoursHealed} hour(s)\n` +
+      `(${intStat}% bonus from Intelligence).`;
+    const fields = [
+      { name: 'Current HP', value: `${player.hp}/${player.hpMax}`, inline: true }
+    ];
+    const embed = createEmbed({ title, description, fields, interaction });
 
-    // Si le joueur n'est pas à plein de vie, proposer de continuer
     const components = [];
     if (player.hp < player.hpMax) {
       const continueBtn = new ButtonBuilder()
         .setCustomId(`startHealing:${discordId}`)
         .setLabel('Continue Healing')
         .setStyle(ButtonStyle.Success);
-      const row = new ActionRowBuilder().addComponents(continueBtn);
-      components.push(row);
+      components.push(new ActionRowBuilder().addComponents(continueBtn));
     }
 
     return interaction.update({ embeds: [embed], components });
