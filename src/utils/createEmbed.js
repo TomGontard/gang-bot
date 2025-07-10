@@ -9,7 +9,7 @@ import { EmbedBuilder } from 'discord.js';
  * @param {Array<Object>} [opts.fields] — Champs à ajouter ({ name, value, inline })
  * @param {number} [opts.color=0xdd2e44] — Couleur par défaut (rouge GangBot)
  * @param {boolean} [opts.footer=true]   — Afficher ou non le footer commun
- * @param {boolean} [opts.timestamp=true] — Ajouter un timestamp à l’embed
+ * @param {boolean} [opts.timestamp=false] — Ajouter un timestamp à l’embed
  * @param {Interaction} [opts.interaction] — Pour récupérer le client et la guild
  */
 export function createEmbed({
@@ -18,7 +18,7 @@ export function createEmbed({
   fields = [],
   color = 0xdd2e44,
   footer = true,
-  timestamp = true,
+  timestamp = false,
   interaction = null
 }) {
   const embed = new EmbedBuilder()
