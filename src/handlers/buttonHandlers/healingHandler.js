@@ -123,6 +123,7 @@ export default async function healingHandler(interaction) {
     player.healStartAt = null;
     await player.save();
 
+    // Construire l'embed de fin
     const embed = new EmbedBuilder()
       .setColor(0xff0000)
       .setTitle('✅ Healing Completed')
@@ -137,6 +138,17 @@ export default async function healingHandler(interaction) {
       })
       .setTimestamp();
 
-    return interaction.update({ embeds: [embed], components: [] });
+    // Si le joueur n'est pas à plein de vie, proposer de continuer
+    const components = [];
+    if (player.hp < player.hpMax) {
+      const continueBtn = new ButtonBuilder()
+        .setCustomId(`startHealing:${discordId}`)
+        .setLabel('Continue Healing')
+        .setStyle(ButtonStyle.Success);
+      const row = new ActionRowBuilder().addComponents(continueBtn);
+      components.push(row);
+    }
+
+    return interaction.update({ embeds: [embed], components });
   }
 }
