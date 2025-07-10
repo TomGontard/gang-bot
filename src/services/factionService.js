@@ -1,17 +1,19 @@
 // src/services/factionService.js
 import Faction from '../data/models/Faction.js';
+import factionsConfig from '../config/factions.js';
 import Player from '../data/models/Player.js';
 
 export async function initializeFactions() {
   const existingCount = await Faction.countDocuments();
   if (existingCount > 0) return;
 
-  const defaultFactions = [
-    { name: 'Red',   displayName: '🔴 Red',   color: '#ff0000', membersCount: 0, warOngoing: false },
-    { name: 'Blue',  displayName: '🔵 Blue',  color: '#0000ff', membersCount: 0, warOngoing: false },
-    { name: 'Green', displayName: '🟢 Green', color: '#00ff00', membersCount: 0, warOngoing: false }
-  ];
-
+  const defaultFactions = factionsConfig.map(f => ({
+      name: f.name,
+      displayName: f.displayName,
+      color: f.color,
+      membersCount: 0,
+      warOngoing: false
+  }));
   for (const data of defaultFactions) {
     await Faction.create(data);
   }

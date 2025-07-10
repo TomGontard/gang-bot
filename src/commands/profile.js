@@ -12,8 +12,9 @@ import {
   getBoosts
 } from '../services/nftService.js';
 import {
+  getActiveMissionsCount,
   getClaimableMissionsCount,
-  getActiveMissionsCount
+  getMaxConcurrentMissions
 } from '../services/missionService.js';
 import metrics from '../config/metrics.js';
 
@@ -28,7 +29,8 @@ export async function execute(interaction) {
 
   // NFT count and boosts
   const nftCount = await getNFTCount(discordId);
-  const { xpBoost, coinsBoost, maxConcurrentMissions } = getBoosts(nftCount);
+  const { xpBoost, coinsBoost } = getBoosts(nftCount);
+  const maxConcurrent = await getMaxConcurrentMissions(nftCount);
 
   // XP to next level
   const currentLevel = player.level;
@@ -65,7 +67,7 @@ export async function execute(interaction) {
       { name: '❤️‍🩹 HP', value: `${player.hp}/${player.hpMax}`, inline: true },
       {
         name: '🔑 NFTs',
-        value: `${nftCount} (Max missions: ${nftCount})`,
+        value: `${nftCount} (Max missions: ${maxConcurrent})`,
         inline: true
       },
       {
@@ -77,7 +79,7 @@ export async function execute(interaction) {
       },
       {
         name: '🎯 Active Missions',
-        value: `${activeCount}`,
+        value: `${activeCount} / ${maxConcurrent}`,
         inline: true
       },
       {
@@ -89,21 +91,10 @@ export async function execute(interaction) {
         name: '⚙️ Unassigned Points',
         value: `${player.unassignedPoints}`,
         inline: true
-      },
-      {
-        name: '🛠️ Attributes',
-        value:
-          `Vitality: ${player.attributes.vitalite}\n` +
-          `Wisdom:   ${player.attributes.sagesse}\n` +
-          `Strength: ${player.attributes.force}\n` +
-          `Intel:    ${player.attributes.intelligence}\n` +
-          `Luck:     ${player.attributes.chance}\n` +
-          `Agility:  ${player.attributes.agilite}`,
-        inline: false
       }
     )
     .setFooter({
-      text: 'Each level grants 10 attribute points. Vitality/Wisdom cost 2 points each.'
+      text: 'Each level grants 10 attribute points and 1 Vitality point.'
     })
     .setTimestamp();
 
@@ -118,11 +109,12 @@ export async function execute(interaction) {
     .setLabel('Healing')
     .setStyle(ButtonStyle.Success);
 
+  // SINGLE “Missions” button now opens the Missions menu
   const missionBtn = new ButtonBuilder()
     .setCustomId(`openMissions:${discordId}`)
     .setLabel('Missions')
     .setStyle(ButtonStyle.Primary)
-    .setDisabled(nftCount < 3); // need ≥3 NFTs
+    .setDisabled(false); // always enabled; internal checks happen in missionHandler
 
   const factionBtn = new ButtonBuilder()
     .setCustomId(`openFactions:${discordId}`)
@@ -136,20 +128,9 @@ export async function execute(interaction) {
     factionBtn
   );
 
-  // Row2: Claim Missions (if any)
-  const components = [row1];
-  if (claimableCount > 0) {
-    const claimBtn = new ButtonBuilder()
-      .setCustomId(`claimMissions:${discordId}`)
-      .setLabel(`Claim Missions (${claimableCount})`)
-      .setStyle(ButtonStyle.Primary);
-    const row2 = new ActionRowBuilder().addComponents(claimBtn);
-    components.push(row2);
-  }
-
   return interaction.reply({
     embeds: [embed],
-    components,
+    components: [row1],
     ephemeral: true
   });
 }
