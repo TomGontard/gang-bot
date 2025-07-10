@@ -3,18 +3,10 @@ import { EmbedBuilder } from 'discord.js';
 
 /**
  * Factory for all GangBot embeds
- * @param {Object} opts
- * @param {string} opts.title         — Titre de l'embed
- * @param {string} opts.description   — Description principale
- * @param {Array<Object>} [opts.fields] — Champs à ajouter ({ name, value, inline })
- * @param {number} [opts.color=0xdd2e44] — Couleur par défaut (rouge GangBot)
- * @param {boolean} [opts.footer=true]   — Afficher ou non le footer commun
- * @param {boolean} [opts.timestamp=false] — Ajouter un timestamp à l’embed
- * @param {Interaction} [opts.interaction] — Pour récupérer le client et la guild
  */
 export function createEmbed({
   title,
-  description,
+  description = '',
   fields = [],
   color = 0xdd2e44,
   footer = true,
@@ -23,8 +15,12 @@ export function createEmbed({
 }) {
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setTitle(title)
-    .setDescription(description);
+    .setTitle(title);
+
+  // On ne setDescription QUE si on a bien une string non vide
+  if (typeof description === 'string' && description.length > 0) {
+    embed.setDescription(description);
+  }
 
   if (fields.length) {
     embed.addFields(fields);
