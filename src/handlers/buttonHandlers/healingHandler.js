@@ -6,7 +6,7 @@ import { createEmbed } from '../../utils/createEmbed.js';
 export default async function healingHandler(interaction) {
   const [action, targetId] = interaction.customId.split(':');
 
-  // Only the user who opened the menu can interact
+  // Seul le lanceur initial peut interagir
   if (interaction.user.id !== targetId) {
     return interaction.reply({ content: '❌ You cannot control another user’s healing.', ephemeral: true });
   }
@@ -16,10 +16,10 @@ export default async function healingHandler(interaction) {
   if (!player) player = await Player.create({ discordId });
 
   const intStat = player.attributes.intelligence || 0;
-  const boostFactor = 1 + intStat / 100; // 1% per INT
-  const healRateDesc = `Recover **1 HP per hour** (+${intStat}% from Intelligence).`;
+  const boostFactor = 1 + intStat / 100; // +1% par point d'INT
+  const healRateDesc = `Recover **5 HP per hour** (+${intStat}% from Intelligence).`;
 
-  // 1) OPEN HEALING MENU
+  // 1) OUVERTURE DU MENU DE SOIN
   if (action === 'openHealing') {
     const title = player.healing ? '🛌 Healing In Progress' : '💉 Healing Menu';
     const description = player.healing
@@ -39,7 +39,6 @@ export default async function healingHandler(interaction) {
       .setLabel(player.healing ? 'Stop Healing' : 'Start Healing')
       .setStyle(player.healing ? ButtonStyle.Danger : ButtonStyle.Success);
 
-    // Send a new ephemeral reply instead of updating the original
     return interaction.reply({
       embeds: [embed],
       components: [new ActionRowBuilder().addComponents(toggleBtn)],
@@ -47,7 +46,7 @@ export default async function healingHandler(interaction) {
     });
   }
 
-  // 2) START HEALING
+  // 2) DÉMARRER LE SOIN
   if (action === 'startHealing') {
     if (player.healing) {
       return interaction.reply({ content: '🔄 You are already in healing mode.', ephemeral: true });
@@ -79,7 +78,7 @@ export default async function healingHandler(interaction) {
     });
   }
 
-  // 3) STOP HEALING
+  // 3) ARRÊTER LE SOIN
   if (action === 'stopHealing') {
     if (!player.healing || !player.healStartAt) {
       return interaction.reply({ content: '❌ You are not currently healing.', ephemeral: true });
@@ -87,7 +86,8 @@ export default async function healingHandler(interaction) {
 
     const now = new Date();
     const hoursHealed = Math.floor((now - player.healStartAt) / 3_600_000);
-    const rawHp = Math.floor(hoursHealed * boostFactor);
+    // 5 HP/heure * bonus INT
+    const rawHp = Math.floor(hoursHealed * 5 * boostFactor);
     const hpGained = Math.min(rawHp, player.hpMax - player.hp);
 
     player.hp += hpGained;
@@ -104,7 +104,7 @@ export default async function healingHandler(interaction) {
       interaction
     });
 
-    // Offer to continue if not fully healed
+    // Proposition de continuer si pas full HP
     const components = [];
     if (player.hp < player.hpMax) {
       const contBtn = new ButtonBuilder()
