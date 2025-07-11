@@ -35,16 +35,18 @@ export default async function missionHandler(interaction) {
     return interaction.reply({ content: '❌ You cannot manage missions for another user.', ephemeral: true });
   }
 
-  // load player & common data
+  // Load player & common data
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  const nftCount        = await getNFTCount(discordId);
+  const nftCount         = await getNFTCount(discordId);
   const { xpBoost, coinsBoost } = getBoosts(nftCount);
-  const agiReduc        = player.attributes.agilite;
-  const maxConc         = await getMaxConcurrentMissions(nftCount);
-  const activeCount     = await getActiveMissionsCount(discordId);
-  const claimableCount  = await getClaimableMissionsCount(discordId);
+  const wisdom           = player.attributes.sagesse;
+  const luck             = player.attributes.chance;
+  const agiReduc         = player.attributes.agilite;
+  const maxConc          = await getMaxConcurrentMissions(nftCount);
+  const activeCount      = await getActiveMissionsCount(discordId);
+  const claimableCount   = await getClaimableMissionsCount(discordId);
 
   // 1) OPEN MENU
   if (action === OPEN) {
@@ -57,7 +59,9 @@ export default async function missionHandler(interaction) {
       description:
         `**HP:** ${player.hp}/${player.hpMax}\n` +
         `**Concurrent:** ${activeCount}/${maxConc}\n` +
-        `**NFT Boost:** +${xpBoost * 100}% XP, +${coinsBoost * 100}% Coins\n` +
+        `**NFT Bonus:** +${xpBoost * 100}% XP, +${coinsBoost * 100}% Coins\n` +
+        `**Wisdom Bonus:** +${wisdom}% XP\n` +
+        `**Luck Bonus:** +${luck}% Coins\n` +
         `**Agility:** -${agiReduc}% HP cost\n\n` +
         `**Available Types (${availableList.length}):** ${availableList.join(', ') || 'None'}`,
       interaction
@@ -96,11 +100,13 @@ export default async function missionHandler(interaction) {
     const options = Object.entries(missionsConfig)
       .filter(([, d]) => player.level >= d.minLevel)
       .map(([key, d]) => {
-        const cost = Math.max(1, Math.floor(d.hpCostRange[1] * (1 - agiReduc / 100)));
+        const raw       = d.hpCostRange[1];
+        const reduction = Math.round(raw * agiReduc / 100);
+        const cost      = Math.max(1, raw - reduction);
         return player.hp >= cost
           ? {
               label: d.displayName,
-              description: `Lvl≥${d.minLevel} • ${d.durationMs/3600000}h • HP ${d.hpCostRange.join('–')}`,
+              description: `Lvl≥${d.minLevel} • ${d.durationMs/3600000}h • HP ${d.hpCostRange.join('–')} (–${reduction})`,
               value: key
             }
           : null;
@@ -140,7 +146,7 @@ export default async function missionHandler(interaction) {
     const now = Date.now();
     const ActiveMission = (await import('../../data/models/ActiveMission.js')).default;
     const running = await ActiveMission.find({ discordId, endAt: { $gt: now }, claimed: false }).lean();
-    const ended = await ActiveMission.find({ discordId, endAt: { $lte: now }, claimed: false }).lean();
+    const ended   = await ActiveMission.find({ discordId, endAt: { $lte: now }, claimed: false }).lean();
 
     if (!running.length && !ended.length) {
       const embed = createEmbed({
@@ -151,12 +157,7 @@ export default async function missionHandler(interaction) {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    const embed = createEmbed({
-      title: '⏳ Ongoing Missions',
-      description: '',
-      interaction
-    });
-
+    const embed = createEmbed({ title: '⏳ Ongoing Missions', description: '', interaction });
     for (const m of running) {
       const d   = missionsConfig[m.missionType] || {};
       const pct = Math.min(100, ((now - m.startAt) / (m.endAt - m.startAt)) * 100);
@@ -176,11 +177,7 @@ export default async function missionHandler(interaction) {
       components.push(new ActionRowBuilder().addComponents(btn));
     }
 
-    return interaction.reply({
-      embeds: [embed],
-      components,
-      ephemeral: true
-    });
+    return interaction.reply({ embeds: [embed], components, ephemeral: true });
   }
 
   // 4) START SELECTED
@@ -203,11 +200,7 @@ export default async function missionHandler(interaction) {
       });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     } catch (err) {
-      const embed = createEmbed({
-        title: '❌ Error',
-        description: err.message,
-        interaction
-      });
+      const embed = createEmbed({ title: '❌ Error', description: err.message, interaction });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   }
@@ -219,18 +212,10 @@ export default async function missionHandler(interaction) {
       const description = res
         .map(r => `• **${r.missionType}** → ${r.xpReward} XP, ${r.coinReward} coins${r.levelsGained ? `, +${r.levelsGained} lvl` : ''}`)
         .join('\n');
-      const embed = createEmbed({
-        title: '🎉 Missions Claimed',
-        description,
-        interaction
-      });
+      const embed = createEmbed({ title: '🎉 Missions Claimed', description, interaction });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     } catch (err) {
-      const embed = createEmbed({
-        title: '❌ Error',
-        description: err.message,
-        interaction
-      });
+      const embed = createEmbed({ title: '❌ Error', description: err.message, interaction });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   }
