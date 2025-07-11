@@ -61,24 +61,42 @@ export default async function attributesHandler(interaction) {
 
   // ADD POINT TO ATTRIBUTE
   if (action === ATTRIB_ADD_PREFIX) {
+    // Acknowledge the button immediately
     await interaction.deferUpdate();
+
     const cost = metrics.attributeCosts[attribute];
     if (player.unassignedPoints < cost) {
       return interaction.followUp({ content: '❌ You don’t have enough unassigned points.', ephemeral: true });
     }
 
+    // Spend the point
     switch (attribute) {
-      case 'Vitality':      player.attributes.vitalite += 1; player.hpMax += 1; break;
-      case 'Wisdom':        player.attributes.sagesse += 1; break;
-      case 'Strength':      player.attributes.force += 1; break;
-      case 'Intelligence':  player.attributes.intelligence += 1; break;
-      case 'Luck':          player.attributes.chance += 1; break;
-      case 'Agility':       player.attributes.agilite += 1; break;
+      case 'Vitality':
+        player.attributes.vitalite += 1;
+        player.hpMax += 1;
+        break;
+      case 'Wisdom':
+        player.attributes.sagesse += 1;
+        break;
+      case 'Strength':
+        player.attributes.force += 1;
+        break;
+      case 'Intelligence':
+        player.attributes.intelligence += 1;
+        break;
+      case 'Luck':
+        player.attributes.chance += 1;
+        break;
+      case 'Agility':
+        player.attributes.agilite += 1;
+        break;
     }
     player.unassignedPoints -= cost;
     await player.save();
 
+    // Re‐render the updated embed and buttons
     const { embed, rows } = buildAttributeEmbedAndButtons();
-    return interaction.editReply({ embeds: [embed], components: rows });
+    // <-- use .update() here, since we used deferUpdate()
+    return interaction.update({ embeds: [embed], components: rows });
   }
 }
