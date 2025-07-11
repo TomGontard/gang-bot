@@ -1,4 +1,3 @@
-// src/commands/guide.js
 import { SlashCommandBuilder } from 'discord.js';
 import { createEmbed } from '../utils/createEmbed.js';
 
@@ -26,7 +25,7 @@ export async function execute(interaction) {
     {
       name: '3️⃣ NFTs & Boosts',
       value:
-        '- Holding NFTs allows you to run missions (lock one NFT per mission).\n' +
+        '- Holding NFTs allows you to run missions.\n' +
         '- Max **3 concurrent missions** by default.\n' +
         '- **Boosts** by NFT count:\n' +
         '   • 1 NFT: no boost\n' +
@@ -49,14 +48,14 @@ export async function execute(interaction) {
     {
       name: '5️⃣ Healing',
       value:
-        '- Recover **1 HP/hour** (+Intelligence%).\n' +
-        '- Launch with the Healing menu and click buttons to start/stop.'
+        '- Recover **5 HP/hour** (+Intelligence%).\n' +
+        '- Open the Healing menu and click to start/stop.'
     },
     {
       name: '6️⃣ Missions (Solo)',
       value:
-        '- Launch with the Missions menu and click buttons to start a mission.\n' +
-        '- HP cost deducted at start.' +
+        '- Open the Missions menu and click to start.\n' +
+        '- HP cost deducted at start.\n' +
         '- Success grants XP & Coins.\n' +
         '- Attributes influence costs and rewards.'
     },
@@ -77,9 +76,9 @@ export async function execute(interaction) {
       name: '📣 Tips',
       value:
         '- Balance attributes for your playstyle.\n' +
-        '- Heal strategically to avoid downtime.\n' +
-        '- Check `/profile` often for status.\n' +
-        '- Watch for faction events. **(not implemented)**'
+        '- Heal strategically.\n' +
+        '- Check `/profile` often.\n' +
+        '- Watch for future faction events.'
     }
   ];
 
@@ -91,5 +90,6 @@ export async function execute(interaction) {
     interaction
   });
 
-  return interaction.reply({ embeds: [embed], ephemeral: true });
+  // finish via editReply() since we already deferReply() upstream
+  await interaction.editReply({ embeds: [embed] });
 }
