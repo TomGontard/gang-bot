@@ -32,7 +32,7 @@ async function buildFactionInterface(player, discordId) {
     return { embed, components: [] };
   }
 
-  const current = player.faction
+  const currentDisplay = player.faction
     ? factionsConfig.find(f => f.name === player.faction)?.displayName
     : null;
 
@@ -43,7 +43,7 @@ async function buildFactionInterface(player, discordId) {
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId(`${SELECT_FACTION_PREFIX}:${discordId}`)
-    .setPlaceholder(current || 'Select a faction')
+    .setPlaceholder(currentDisplay || 'Select a faction')
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(
@@ -69,6 +69,8 @@ async function buildFactionInterface(player, discordId) {
 
 export default async function factionHandler(interaction) {
   const [action, targetId] = interaction.customId.split(':');
+
+  // Only the user who opened the menu can interact
   if (interaction.user.id !== targetId) {
     return interaction.reply({ content: '❌ You cannot manage factions for another user.', ephemeral: true });
   }
@@ -77,47 +79,46 @@ export default async function factionHandler(interaction) {
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  // OPEN MENU
+  // 1) OPEN MENU
   if (action === OPEN_FACTION_PREFIX) {
     const { embed, components } = await buildFactionInterface(player, discordId);
     return interaction.reply({ embeds: [embed], components, ephemeral: true });
   }
 
-  // SELECT FACTION
+  // 2) SELECT FACTION
   if (action === SELECT_FACTION_PREFIX) {
     const chosen = interaction.values[0];
 
-    // Cooldown
+    // 2.a) Cooldown check
     if (player.lastFactionChange) {
       const elapsed = Date.now() - player.lastFactionChange.getTime();
       if (elapsed < metrics.factionChangeCooldown) {
         const next = new Date(player.lastFactionChange.getTime() + metrics.factionChangeCooldown);
-        const embed = createEmbed({
+        const cdEmbed = createEmbed({
           title: '⏳ Cooldown',
-          description: `Wait until <t:${Math.floor(next.getTime()/1000)}:R> to switch again.`
+          description: `You must wait until <t:${Math.floor(next.getTime()/1000)}:R> before changing again.`
         });
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+        return interaction.reply({ embeds: [cdEmbed], ephemeral: true });
       }
     }
 
+    // 2.b) Attempt join/switch
     try {
-      if (!await canJoinFaction(chosen)) {
-        const embed = createEmbed({
+      if (!(await canJoinFaction(chosen))) {
+        const errEmbed = createEmbed({
           title: '❌ Cannot Join',
-          description: 'Joining this faction would unbalance the roster.'
+          description: 'Choosing this faction would unbalance the roster.'
         });
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+        return interaction.reply({ embeds: [errEmbed], ephemeral: true });
       }
 
       await assignFactionToPlayer(player, chosen);
       player.lastFactionChange = new Date();
       await player.save();
 
-      // Sync roles
+      // Sync Discord roles
       const member = await interaction.guild.members.fetch(discordId);
-      const allRoles = factionsConfig
-        .map(f => process.env[f.roleEnvVar])
-        .filter(Boolean);
+      const allRoles = factionsConfig.map(f => process.env[f.roleEnvVar]).filter(Boolean);
       await member.roles.remove(allRoles);
 
       const newFaction = factionsConfig.find(f => f.name === chosen);
@@ -125,39 +126,41 @@ export default async function factionHandler(interaction) {
         await member.roles.add(process.env[newFaction.roleEnvVar]);
       }
 
-      // Affiche displayName
-      const embed = createEmbed({
+      // Show displayName in confirmation
+      const joinEmbed = createEmbed({
         title: '✅ Joined Faction',
         description: `You joined **${newFaction.displayName}**!`
       });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({ embeds: [joinEmbed], ephemeral: true });
+
     } catch (err) {
-      const embed = createEmbed({
-        title: '❌ Error',
-        description: err.message
-      });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      const errorEmbed = createEmbed({ title: '❌ Error', description: err.message });
+      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
     }
   }
 
-  // CONFIRM LEAVE
+  // 3) CONFIRM LEAVE
   if (action === CONFIRM_FACTION_LEAVE_PREF) {
     if (!player.faction) {
       return interaction.reply({ content: '❌ You are not in a faction.', ephemeral: true });
     }
     const currentDisplay = factionsConfig.find(f => f.name === player.faction).displayName;
-    const embed = createEmbed({
+    const confirmEmbed = createEmbed({
       title: '⚠️ Confirm Leave',
       description: `Are you sure you want to leave **${currentDisplay}**?`
     });
     const confirmBtn = new ButtonBuilder()
       .setCustomId(`${FINAL_FACTION_LEAVE}:${discordId}`)
-      .setLabel('Confirm')
+      .setLabel('Confirm Leave')
       .setStyle(ButtonStyle.Danger);
-    return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(confirmBtn)], ephemeral: true });
+    return interaction.reply({
+      embeds: [confirmEmbed],
+      components: [new ActionRowBuilder().addComponents(confirmBtn)],
+      ephemeral: true
+    });
   }
 
-  // FINAL LEAVE
+  // 4) FINAL LEAVE
   if (action === FINAL_FACTION_LEAVE) {
     if (!player.faction) {
       return interaction.reply({ content: '❌ You are not in a faction.', ephemeral: true });
@@ -168,16 +171,14 @@ export default async function factionHandler(interaction) {
     await player.save();
 
     const member = await interaction.guild.members.fetch(discordId);
-    const allRoles = factionsConfig
-      .map(f => process.env[f.roleEnvVar])
-      .filter(Boolean);
+    const allRoles = factionsConfig.map(f => process.env[f.roleEnvVar]).filter(Boolean);
     await member.roles.remove(allRoles);
 
     const next = new Date(player.lastFactionChange.getTime() + metrics.factionChangeCooldown);
-    const embed = createEmbed({
+    const leaveEmbed = createEmbed({
       title: '✅ Left Faction',
       description: `You have left your faction. Next join available <t:${Math.floor(next.getTime()/1000)}:R>.`
     });
-    return interaction.reply({ embeds: [embed], ephemeral: true });
+    return interaction.reply({ embeds: [leaveEmbed], ephemeral: true });
   }
 }
