@@ -17,11 +17,11 @@ import {
 import { getNFTCount, getBoosts } from '../../services/nftService.js';
 import missionsConfig from '../../config/missions.js';
 
-const OPEN = 'openMissions';
+const OPEN   = 'openMissions';
 const LAUNCH = 'launchMission';
-const VIEW = 'viewMissions';
+const VIEW   = 'viewMissions';
 const SELECT = 'selectMission';
-const CLAIM = 'claimMissions';
+const CLAIM  = 'claimMissions';
 
 function buildBar(p) {
   const filled = '█'.repeat(Math.floor((p / 100) * 10));
@@ -32,12 +32,10 @@ function buildBar(p) {
 export default async function missionHandler(interaction) {
   const [action, discordId] = interaction.customId.split(':');
   if (interaction.user.id !== discordId) {
-    await interaction.deferUpdate();
-    return;
+    return interaction.reply({ content: '❌ You cannot manage missions for another user.', ephemeral: true });
   }
 
   // load player & common data
-  await interaction.deferUpdate();
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
@@ -50,19 +48,18 @@ export default async function missionHandler(interaction) {
 
   // 1) OPEN MENU
   if (action === OPEN) {
-    const available = Object.values(missionsConfig)
+    const availableList = Object.values(missionsConfig)
       .filter(d => player.level >= d.minLevel)
-      .map(d => `${d.displayName}(Lvl≥${d.minLevel})`)
-      .join(', ') || 'None';
+      .map(d => `${d.displayName} (Lvl≥${d.minLevel})`);
 
     const embed = createEmbed({
       title: '🗂️ Missions Menu',
       description:
         `**HP:** ${player.hp}/${player.hpMax}\n` +
         `**Concurrent:** ${activeCount}/${maxConc}\n` +
-        `**NFT Boost:** +${xpBoost*100}% XP, +${coinsBoost*100}% Coins\n` +
+        `**NFT Boost:** +${xpBoost * 100}% XP, +${coinsBoost * 100}% Coins\n` +
         `**Agility:** -${agiReduc}% HP cost\n\n` +
-        `**Available Types (${available.split(', ').length}):** ${available}`,
+        `**Available Types (${availableList.length}):** ${availableList.join(', ') || 'None'}`,
       interaction
     });
 
@@ -78,19 +75,28 @@ export default async function missionHandler(interaction) {
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(activeCount + claimableCount === 0);
 
-    return interaction.editReply({
+    return interaction.reply({
       embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(launchBtn, viewBtn)]
+      components: [new ActionRowBuilder().addComponents(launchBtn, viewBtn)],
+      ephemeral: true
     });
   }
 
   // 2) SHOW LAUNCH SELECT
   if (action === LAUNCH) {
+    if (nftCount < 1) {
+      const embed = createEmbed({
+        title: '❌ Cannot Launch',
+        description: 'You need at least **1 Genesis Pass NFT** to start missions.',
+        interaction
+      });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
     const options = Object.entries(missionsConfig)
       .filter(([, d]) => player.level >= d.minLevel)
       .map(([key, d]) => {
-        const raw = d.hpCostRange[1];
-        const cost = Math.max(1, Math.floor(raw * (1 - agiReduc / 100)));
+        const cost = Math.max(1, Math.floor(d.hpCostRange[1] * (1 - agiReduc / 100)));
         return player.hp >= cost
           ? {
               label: d.displayName,
@@ -107,7 +113,7 @@ export default async function missionHandler(interaction) {
         description: 'Level too low or insufficient HP.',
         interaction
       });
-      return interaction.editReply({ embeds: [embed], components: [] });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
     const select = new StringSelectMenuBuilder()
@@ -122,9 +128,10 @@ export default async function missionHandler(interaction) {
       interaction
     });
 
-    return interaction.editReply({
+    return interaction.reply({
       embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(select)]
+      components: [new ActionRowBuilder().addComponents(select)],
+      ephemeral: true
     });
   }
 
@@ -133,7 +140,7 @@ export default async function missionHandler(interaction) {
     const now = Date.now();
     const ActiveMission = (await import('../../data/models/ActiveMission.js')).default;
     const running = await ActiveMission.find({ discordId, endAt: { $gt: now }, claimed: false }).lean();
-    const ended   = await ActiveMission.find({ discordId, endAt: { $lte: now }, claimed: false }).lean();
+    const ended = await ActiveMission.find({ discordId, endAt: { $lte: now }, claimed: false }).lean();
 
     if (!running.length && !ended.length) {
       const embed = createEmbed({
@@ -141,14 +148,18 @@ export default async function missionHandler(interaction) {
         description: 'Nothing active or to claim.',
         interaction
       });
-      return interaction.editReply({ embeds: [embed], components: [] });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    const embed = createEmbed({ title: '⏳ Ongoing Missions', description: '', interaction });
+    const embed = createEmbed({
+      title: '⏳ Ongoing Missions',
+      description: '',
+      interaction
+    });
 
     for (const m of running) {
-      const d     = missionsConfig[m.missionType] || {};
-      const pct   = Math.min(100, ((now - m.startAt) / (m.endAt - m.startAt)) * 100);
+      const d   = missionsConfig[m.missionType] || {};
+      const pct = Math.min(100, ((now - m.startAt) / (m.endAt - m.startAt)) * 100);
       embed.addFields({
         name: d.displayName,
         value: `Ends <t:${Math.floor(m.endAt/1000)}:R> • HP:${m.hpCost} • ${buildBar(pct)}`,
@@ -165,7 +176,11 @@ export default async function missionHandler(interaction) {
       components.push(new ActionRowBuilder().addComponents(btn));
     }
 
-    return interaction.editReply({ embeds: [embed], components });
+    return interaction.reply({
+      embeds: [embed],
+      components,
+      ephemeral: true
+    });
   }
 
   // 4) START SELECTED
@@ -186,14 +201,14 @@ export default async function missionHandler(interaction) {
         ],
         interaction
       });
-      return interaction.editReply({ embeds: [embed], components: [] });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     } catch (err) {
       const embed = createEmbed({
         title: '❌ Error',
         description: err.message,
         interaction
       });
-      return interaction.editReply({ embeds: [embed], components: [] });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   }
 
@@ -209,14 +224,14 @@ export default async function missionHandler(interaction) {
         description,
         interaction
       });
-      return interaction.editReply({ embeds: [embed], components: [] });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     } catch (err) {
       const embed = createEmbed({
         title: '❌ Error',
         description: err.message,
         interaction
       });
-      return interaction.editReply({ embeds: [embed], components: [] });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   }
 }
