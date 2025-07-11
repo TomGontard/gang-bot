@@ -32,19 +32,16 @@ function buildBar(percent) {
 export default async function missionHandler(interaction) {
   const [action, discordId] = interaction.customId.split(':');
 
-  // Sécurité : seul le lanceur peut interagir
+  // only the original user can interact
   if (interaction.user.id !== discordId) {
-    return interaction.reply({
-      content: '❌ You cannot manage missions for another user.',
-      ephemeral: true
-    });
+    return interaction.reply({ content: '❌ You cannot manage missions for another user.', ephemeral: true });
   }
 
-  // Charge ou crée le joueur
+  // fetch or create player
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  // Données communes
+  // common data
   const nftCount       = await getNFTCount(discordId);
   const { xpBoost, coinsBoost } = getBoosts(nftCount);
   const wisdom         = player.attributes.sagesse;
@@ -54,7 +51,7 @@ export default async function missionHandler(interaction) {
   const activeCount    = await getActiveMissionsCount(discordId);
   const claimableCount = await getClaimableMissionsCount(discordId);
 
-  // 1) Menu principal
+  // 1) OPEN menu — first reply
   if (action === OPEN) {
     const available = Object.values(missionsConfig)
       .filter(m => player.level >= m.minLevel)
@@ -96,14 +93,17 @@ export default async function missionHandler(interaction) {
     return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
   }
 
-  // 2) Sélection du type de mission
+  // 2–5) subsequent steps: defer then update
+  await interaction.deferUpdate();
+
+  // 2) SHOW launch options
   if (action === LAUNCH) {
     if (nftCount < 1) {
       const embed = createEmbed({
         title: '❌ Cannot Launch',
         description: 'You need at least **1 Genesis Pass NFT** to start missions.'
       });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     }
 
     const options = Object.entries(missionsConfig)
@@ -112,22 +112,18 @@ export default async function missionHandler(interaction) {
         const raw = m.hpCostRange[1];
         const reduction = Math.round(raw * agiReduc / 100);
         const cost = Math.max(1, raw - reduction);
-        return player.hp >= cost
-          ? {
-              label: m.displayName,
-              description: `Lvl≥${m.minLevel} • ${m.durationMs/3600000}h • HP ${m.hpCostRange.join('–')} (−${reduction})`,
-              value: key
-            }
-          : null;
+        if (player.hp < cost) return null;
+        return {
+          label: m.displayName,
+          description: `Lvl≥${m.minLevel} • ${m.durationMs/3600000}h • HP ${m.hpCostRange.join('–')} (−${reduction})`,
+          value: key
+        };
       })
       .filter(Boolean);
 
     if (!options.length) {
-      const embed = createEmbed({
-        title: '❌ No Missions',
-        description: 'Level too low or insufficient HP.'
-      });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      const embed = createEmbed({ title: '❌ No Missions', description: 'Level too low or insufficient HP.' });
+      return interaction.update({ embeds: [embed], components: [] });
     }
 
     const menu = new StringSelectMenuBuilder()
@@ -141,25 +137,30 @@ export default async function missionHandler(interaction) {
       fields: [{ name: 'Options', value: `${options.length}`, inline: true }]
     });
 
-    return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+    return interaction.update({
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(menu)]
+    });
   }
 
-  // 3) Afficher les missions en cours
+  // 3) VIEW ongoing
   if (action === VIEW) {
     const now = Date.now();
     const ActiveMission = (await import('../../data/models/ActiveMission.js')).default;
-    const running = await ActiveMission.find({ discordId, endAt: { $gt: now }, claimed: false }).lean();
+    const running = await ActiveMission.find({
+      discordId, endAt: { $gt: now }, claimed: false
+    }).lean();
 
     if (!running.length) {
       const embed = createEmbed({
         title: 'ℹ️ No Active Missions',
         description: 'You have no missions in progress.'
       });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     }
 
     const embed = createEmbed({ title: '⏳ Ongoing Missions', description: '' });
-    running.forEach(m => {
+    for (const m of running) {
       const def = missionsConfig[m.missionType] || {};
       const pct = Math.min(100, ((now - m.startAt) / (m.endAt - m.startAt)) * 100);
       embed.addFields({
@@ -167,12 +168,12 @@ export default async function missionHandler(interaction) {
         value: `Ends <t:${Math.floor(m.endAt/1000)}:R> • HP: ${m.hpCost} • ${buildBar(pct)}`,
         inline: false
       });
-    });
+    }
 
-    return interaction.reply({ embeds: [embed], ephemeral: true });
+    return interaction.update({ embeds: [embed], components: [] });
   }
 
-  // 4) Lancer la mission choisie
+  // 4) START selected
   if (action === SELECT) {
     const missionType = interaction.values[0];
     try {
@@ -189,25 +190,25 @@ export default async function missionHandler(interaction) {
           { name: 'Coins',   value: `${am.coinReward}`, inline: true }
         ]
       });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     } catch (err) {
       const embed = createEmbed({ title: '❌ Error', description: err.message });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     }
   }
 
-  // 5) Réclamer les récompenses
+  // 5) CLAIM rewards
   if (action === CLAIM) {
     try {
       const results = await claimMissionRewards(discordId);
-      const desc = results
+      const description = results
         .map(r => `• **${r.missionType}** → ${r.xpReward} XP, ${r.coinReward} coins${r.levelsGained ? `, +${r.levelsGained} lvl` : ''}`)
         .join('\n');
-      const embed = createEmbed({ title: '🎉 Missions Claimed', description: desc });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      const embed = createEmbed({ title: '🎉 Missions Claimed', description });
+      return interaction.update({ embeds: [embed], components: [] });
     } catch (err) {
       const embed = createEmbed({ title: '❌ Error', description: err.message });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     }
   }
 }
