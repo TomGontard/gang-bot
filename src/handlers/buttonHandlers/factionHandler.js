@@ -1,4 +1,3 @@
-// src/handlers/buttonHandlers/factionHandler.js
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -16,180 +15,138 @@ import metrics from '../../config/metrics.js';
 import factionsConfig from '../../config/factions.js';
 import { createEmbed } from '../../utils/createEmbed.js';
 
-const OPEN_FACTION_PREFIX        = 'openFactions';
-const SELECT_FACTION_PREFIX      = 'selectFaction';
-const CONFIRM_FACTION_LEAVE_PREF = 'confirmFactionLeave';
-const FINAL_FACTION_LEAVE        = 'finalFactionLeave';
+const OPEN = 'openFactions';
+const SELECT = 'selectFaction';
+const CONFIRM = 'confirmFactionLeave';
+const FINAL = 'finalFactionLeave';
 
-async function buildFactionInterface(player, discordId) {
+async function buildInterface(player, discordId) {
   const nftCount = await getNFTCount(discordId);
   if (nftCount < 1) {
-    const embed = createEmbed({
-      title: '🔒 Factions Locked',
-      description: 'You need at least one Genesis Pass NFT to manage factions.',
-      color: 0xDD2E44
-    });
-    return { embed, components: [] };
+    return {
+      embed: createEmbed({
+        title: '🔒 Factions Locked',
+        description: 'You need at least one Genesis Pass NFT.',
+        color: 0xDD2E44
+      }),
+      components: []
+    };
   }
 
-  const currentDisplay = player.faction
-    ? factionsConfig.find(f => f.name === player.faction)?.displayName
+  const display = player.faction
+    ? factionsConfig.find(f=>f.name===player.faction).displayName
     : null;
 
   const embed = createEmbed({
     title: '🏷️ Factions',
-    description: 'Choose or leave your faction below.'
+    description: 'Pick or leave a faction below.'
   });
 
-  const selectMenu = new StringSelectMenuBuilder()
-    .setCustomId(`${SELECT_FACTION_PREFIX}:${discordId}`)
-    .setPlaceholder(currentDisplay || 'Select a faction')
-    .setMinValues(1)
-    .setMaxValues(1)
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`${SELECT}:${discordId}`)
+    .setPlaceholder(display||'Select a faction')
     .addOptions(
-      factionsConfig.map(f => ({
+      factionsConfig.map(f=>({
         label: f.displayName,
         description: f.description,
         value: f.name,
-        default: player.faction === f.name
+        default: player.faction===f.name
       }))
     );
 
-  const components = [new ActionRowBuilder().addComponents(selectMenu)];
+  const rows = [new ActionRowBuilder().addComponents(menu)];
   if (player.faction) {
-    const leaveBtn = new ButtonBuilder()
-      .setCustomId(`${CONFIRM_FACTION_LEAVE_PREF}:${discordId}`)
-      .setLabel('Leave Faction')
-      .setStyle(ButtonStyle.Danger);
-    components.push(new ActionRowBuilder().addComponents(leaveBtn));
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${CONFIRM}:${discordId}`)
+        .setLabel('Leave Faction')
+        .setStyle(ButtonStyle.Danger)
+    ));
   }
 
-  return { embed, components };
+  return { embed, components: rows };
 }
 
 export default async function factionHandler(interaction) {
-  const [action, targetId] = interaction.customId.split(':');
-  const discordId = targetId;
+  const [action, discordId] = interaction.customId.split(':');
 
-  // 0) Only the command caller can interact
+  // only opener
   if (interaction.user.id !== discordId) {
-    return interaction.reply({
-      content: '❌ You cannot manage factions for another user.',
-      ephemeral: true
-    });
+    return interaction.reply({ content: '❌ You cannot manage factions for another user.', ephemeral: true });
   }
 
-  // 1) Fetch or create player
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  // 2) OPEN MENU: first reply
-  if (action === OPEN_FACTION_PREFIX) {
-    const { embed, components } = await buildFactionInterface(player, discordId);
-    return interaction.reply({
-      embeds: [embed],
-      components,
-      ephemeral: true
-    });
+  // OPEN = first reply
+  if (action === OPEN) {
+    const { embed, components } = await buildInterface(player, discordId);
+    return interaction.reply({ embeds: [embed], components, ephemeral: true });
   }
 
-  // 3) Subsequent interactions: acknowledge then update
+  // subsequent actions
   await interaction.deferUpdate();
 
-  // 3a) SELECT FACTION
-  if (action === SELECT_FACTION_PREFIX) {
+  // SELECT
+  if (action === SELECT) {
     const chosen = interaction.values[0];
 
-    // Cooldown check
+    // cooldown
     if (player.lastFactionChange) {
-      const elapsed = Date.now() - player.lastFactionChange.getTime();
-      if (elapsed < metrics.factionChangeCooldown) {
-        const next = new Date(player.lastFactionChange.getTime() + metrics.factionChangeCooldown);
+      const next = new Date(player.lastFactionChange.getTime() + metrics.factionChangeCooldown);
+      if (Date.now() < next) {
         const cdEmbed = createEmbed({
           title: '⏳ Cooldown',
-          description: `You must wait until <t:${Math.floor(next.getTime()/1000)}:R> before changing again.`
+          description: `Wait until <t:${Math.floor(next.getTime()/1000)}:R>.`
         });
         return interaction.update({ embeds: [cdEmbed], components: [] });
       }
     }
 
-    // Try to join
-    try {
-      if (!(await canJoinFaction(chosen))) {
-        const errEmbed = createEmbed({
-          title: '❌ Cannot Join',
-          description: 'Choosing this faction would unbalance the roster.'
-        });
-        return interaction.update({ embeds: [errEmbed], components: [] });
-      }
-
-      await assignFactionToPlayer(player, chosen);
-      player.lastFactionChange = new Date();
-      await player.save();
-
-      // Sync Discord roles
-      const member = await interaction.guild.members.fetch(discordId);
-      const allRoles = factionsConfig.map(f => process.env[f.roleEnvVar]).filter(Boolean);
-      await member.roles.remove(allRoles);
-
-      const newFaction = factionsConfig.find(f => f.name === chosen);
-      if (newFaction) {
-        await member.roles.add(process.env[newFaction.roleEnvVar]);
-      }
-
-      const joinEmbed = createEmbed({
-        title: '✅ Joined Faction',
-        description: `You joined **${newFaction.displayName}**!`
-      });
-      return interaction.update({ embeds: [joinEmbed], components: [] });
-    } catch (err) {
-      const errorEmbed = createEmbed({ title: '❌ Error', description: err.message });
-      return interaction.update({ embeds: [errorEmbed], components: [] });
+    if (!(await canJoinFaction(chosen))) {
+      const err = createEmbed({ title:'❌ Cannot Join', description:'Unbalanced roster.' });
+      return interaction.update({ embeds:[err], components:[] });
     }
+
+    await assignFactionToPlayer(player, chosen);
+    player.lastFactionChange = new Date();
+    await player.save();
+
+    // sync roles...
+    const role = factionsConfig.find(f=>f.name===chosen);
+    const joinEmbed = createEmbed({
+      title:'✅ Joined Faction',
+      description:`You joined **${role.displayName}**!`
+    });
+    return interaction.update({ embeds:[joinEmbed], components:[] });
   }
 
-  // 3b) CONFIRM LEAVE
-  if (action === CONFIRM_FACTION_LEAVE_PREF) {
+  // CONFIRM LEAVE
+  if (action === CONFIRM) {
     if (!player.faction) {
-      const noneEmbed = createEmbed({ title: '❌ Not in Faction', description: 'You are not in any faction.' });
-      return interaction.update({ embeds: [noneEmbed], components: [] });
+      const none = createEmbed({ title:'❌ Not in Faction', description:'You are not in one.' });
+      return interaction.update({ embeds:[none], components:[] });
     }
-    const currentDisplay = factionsConfig.find(f => f.name === player.faction).displayName;
-    const confirmEmbed = createEmbed({
-      title: '⚠️ Confirm Leave',
-      description: `Are you sure you want to leave **${currentDisplay}**?`
-    });
-    const confirmBtn = new ButtonBuilder()
-      .setCustomId(`${FINAL_FACTION_LEAVE}:${discordId}`)
-      .setLabel('Confirm Leave')
+    const name = factionsConfig.find(f=>f.name===player.faction).displayName;
+    const confirm = createEmbed({ title:'⚠️ Confirm Leave', description:`Leave **${name}**?` });
+    const btn = new ButtonBuilder()
+      .setCustomId(`${FINAL}:${discordId}`)
+      .setLabel('Confirm')
       .setStyle(ButtonStyle.Danger);
-    return interaction.update({
-      embeds: [confirmEmbed],
-      components: [new ActionRowBuilder().addComponents(confirmBtn)]
-    });
+    return interaction.update({ embeds:[confirm], components:[ new ActionRowBuilder().addComponents(btn) ] });
   }
 
-  // 3c) FINAL LEAVE
-  if (action === FINAL_FACTION_LEAVE) {
+  // FINAL LEAVE
+  if (action === FINAL) {
     if (!player.faction) {
-      const noneEmbed = createEmbed({ title: '❌ Not in Faction', description: 'You are not in any faction.' });
-      return interaction.update({ embeds: [noneEmbed], components: [] });
+      const none = createEmbed({ title:'❌ Not in Faction', description:'You are not in one.' });
+      return interaction.update({ embeds:[none], components:[] });
     }
-
     await removePlayerFromFaction(player);
     player.lastFactionChange = new Date();
     await player.save();
 
-    // Remove all faction roles
-    const member = await interaction.guild.members.fetch(discordId);
-    const allRoles = factionsConfig.map(f => process.env[f.roleEnvVar]).filter(Boolean);
-    await member.roles.remove(allRoles);
-
-    const next = new Date(player.lastFactionChange.getTime() + metrics.factionChangeCooldown);
-    const leaveEmbed = createEmbed({
-      title: '✅ Left Faction',
-      description: `You have left your faction. Next join available <t:${Math.floor(next.getTime()/1000)}:R>.`
-    });
-    return interaction.update({ embeds: [leaveEmbed], components: [] });
+    const leave = createEmbed({ title:'✅ Left Faction', description:'You have left your faction.' });
+    return interaction.update({ embeds:[leave], components:[] });
   }
 }

@@ -1,4 +1,3 @@
-// src/commands/leaderboard.js
 import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import Player from '../data/models/Player.js';
 import { getNFTCount } from '../services/nftService.js';
@@ -9,14 +8,13 @@ export const data = new SlashCommandBuilder()
   .setDescription('Display the top players by XP with pagination.');
 
 export async function execute(interaction) {
+  // on a déjà deferReply() en amont
   const { embed, components } = await buildLeaderboard(0, interaction);
-  await interaction.reply({ embeds: [embed], components, ephemeral: true });
+  await interaction.editReply({ embeds: [embed], components });
 }
 
 /**
  * Build embed and buttons for a given page.
- * @param {number} page
- * @param {import('discord.js').CommandInteraction} interaction
  */
 export async function buildLeaderboard(page, interaction) {
   const pageSize = 10;
@@ -52,19 +50,18 @@ export async function buildLeaderboard(page, interaction) {
     interaction
   });
 
-  const row = new ActionRowBuilder()
-    .addComponents(
-      new ButtonBuilder()
-        .setCustomId(`leaderPrev:${page}:${interaction.user.id}`)
-        .setLabel('◀️ Prev')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(page === 0),              // Always show, disabled on first page
-      new ButtonBuilder()
-        .setCustomId(`leaderNext:${page}:${interaction.user.id}`)
-        .setLabel('Next ▶️')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(skip + players.length >= totalPlayers) // Disabled on last page
-    );
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`leaderPrev:${page}:${interaction.user.id}`)
+      .setLabel('◀️ Prev')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page === 0),
+    new ButtonBuilder()
+      .setCustomId(`leaderNext:${page}:${interaction.user.id}`)
+      .setLabel('Next ▶️')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(skip + players.length >= totalPlayers)
+  );
 
   return { embed, components: [row] };
 }

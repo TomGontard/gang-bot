@@ -1,12 +1,7 @@
-// src/commands/stats.js
 import { SlashCommandBuilder, PermissionsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import Player from '../data/models/Player.js';
 import { getNFTCount, getBoosts } from '../services/nftService.js';
-import {
-  getActiveMissionsCount,
-  getClaimableMissionsCount,
-  getMaxConcurrentMissions
-} from '../services/missionService.js';
+import { getActiveMissionsCount, getClaimableMissionsCount, getMaxConcurrentMissions } from '../services/missionService.js';
 import metrics from '../config/metrics.js';
 import factionsConfig from '../config/factions.js';
 import { createEmbed } from '../utils/createEmbed.js';
@@ -19,7 +14,6 @@ export const data = new SlashCommandBuilder()
        .setDescription('The user whose stats to view')
        .setRequired(true)
   )
-  // restrict to administrators
   .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator);
 
 export async function execute(interaction) {
@@ -29,22 +23,18 @@ export async function execute(interaction) {
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  // Faction display
   const factionEntry = factionsConfig.find(f => f.name === player.faction);
   const factionDisplay = factionEntry?.displayName ?? 'None';
 
-  // NFT & boosts
   const nftCount = await getNFTCount(discordId);
   const { xpBoost, coinsBoost } = getBoosts(nftCount);
   const maxConcurrent = await getMaxConcurrentMissions(nftCount);
 
-  // XP to next level
   const nextThreshold = metrics.levelThresholds[player.level + 1] ?? Infinity;
   const xpToNext = nextThreshold !== Infinity
     ? `${Math.max(0, nextThreshold - player.xp)}`
     : '—';
 
-  // Missions
   const activeCount = await getActiveMissionsCount(discordId);
   const claimableCount = await getClaimableMissionsCount(discordId);
 
@@ -72,25 +62,12 @@ export async function execute(interaction) {
     interaction
   });
 
-  // We reuse the same action‐row buttons as /profile
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`openAttributes:${discordId}`)
-      .setLabel('Attributes')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(`openHealing:${discordId}`)
-      .setLabel('Healing')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`openMissions:${discordId}`)
-      .setLabel('Missions')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(`openFactions:${discordId}`)
-      .setLabel('Factions')
-      .setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`openAttributes:${discordId}`).setLabel('Attributes').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`openHealing:${discordId}`).setLabel('Healing').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`openMissions:${discordId}`).setLabel('Missions').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`openFactions:${discordId}`).setLabel('Factions').setStyle(ButtonStyle.Secondary)
   );
 
-  await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+  await interaction.editReply({ embeds: [embed], components: [row] });
 }
