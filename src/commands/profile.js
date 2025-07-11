@@ -16,41 +16,54 @@ export async function execute(interaction) {
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
+  // 1) Recalculate hpMax
+  const BASE_HP = 100;
+  const vitalityPoints = player.attributes.vitalite || 0;
+  const levelBonus = Math.max(0, player.level - 1);
+  const newHpMax = BASE_HP + levelBonus + vitalityPoints;
+
+  // 2) If changed, update DB and clamp current hp
+  if (player.hpMax !== newHpMax) {
+    player.hpMax = newHpMax;
+    if (player.hp > newHpMax) player.hp = newHpMax;
+    await player.save();
+  }
+
   // Determine faction displayName
   const factionEntry = factionsConfig.find(f => f.name === player.faction);
   const factionDisplay = factionEntry?.displayName ?? 'None';
 
   // NFT count, boosts, and concurrency
-  const nftCount = await getNFTCount(discordId);
+  const nftCount      = await getNFTCount(discordId);
   const { xpBoost, coinsBoost } = getBoosts(nftCount);
   const maxConcurrent = await getMaxConcurrentMissions(nftCount);
 
   // XP to next level
   const nextThreshold = metrics.levelThresholds[player.level + 1] ?? Infinity;
-  const xpToNext = nextThreshold !== Infinity ? `${Math.max(0, nextThreshold - player.xp)}` : '—';
+  const xpToNext = nextThreshold !== Infinity
+    ? `${Math.max(0, nextThreshold - player.xp)}`
+    : '—';
 
   // Active & claimable missions
-  const activeCount = await getActiveMissionsCount(discordId);
+  const activeCount    = await getActiveMissionsCount(discordId);
   const claimableCount = await getClaimableMissionsCount(discordId);
 
+  // Build embed
   const fields = [
-    { name: '🔑 Discord ID',          value: player.discordId, inline: true },
-    { name: '🏷️ Faction',             value: factionDisplay, inline: true },
-    { name: '📈 Level',               value: `${player.level}`, inline: true },
-    // Spacer
-    { name: '​',                       value: '​', inline: false },
-    { name: '🗡️ XP',                 value: `${player.xp}${xpToNext !== '—' ? ` (Next ${xpToNext})` : ''}`, inline: true },
-    { name: '💰 Coins',               value: `${player.coins}`, inline: true },
-    { name: '❤️‍🩹 HP',                value: `${player.hp}/${player.hpMax}`, inline: true },
-    // Spacer
-    { name: '​',                       value: '​', inline: false },
-    { name: '🔑 NFTs',                value: `${nftCount} (Max: ${maxConcurrent})`, inline: true },
-    { name: '📊 Boosts',              value: `• XP: ${(xpBoost*100).toFixed(0)}%\n• Coins: ${(coinsBoost*100).toFixed(0)}%`, inline: true },
-    { name: '🎯 Active Missions',      value: `${activeCount} / ${maxConcurrent}`, inline: true },
-    // Spacer
-    { name: '​',                       value: '​', inline: false },
-    { name: '📬 Claimable Missions',  value: `${claimableCount}`, inline: true },
-    { name: '⚙️ Unassigned Points',   value: `${player.unassignedPoints}`, inline: true }
+    { name: '🔑 Discord ID',         value: player.discordId,                     inline: true },
+    { name: '🏷️ Faction',            value: factionDisplay,                         inline: true },
+    { name: '📈 Level',              value: `${player.level}`,                      inline: true },
+    { name: '​',                      value: '​',                                      inline: false },
+    { name: '🗡️ XP',                value: `${player.xp}${xpToNext !== '—' ? ` (Next ${xpToNext})` : ''}`, inline: true },
+    { name: '💰 Coins',              value: `${player.coins}`,                       inline: true },
+    { name: '❤️‍🩹 HP',               value: `${player.hp}/${player.hpMax}`,          inline: true },
+    { name: '​',                      value: '​',                                      inline: false },
+    { name: '🔑 NFTs',               value: `${nftCount} (Max: ${maxConcurrent})`,   inline: true },
+    { name: '📊 Boosts',             value: `• XP: ${(xpBoost*100).toFixed(0)}%\n• Coins: ${(coinsBoost*100).toFixed(0)}%`, inline: true },
+    { name: '🎯 Active Missions',     value: `${activeCount} / ${maxConcurrent}`,     inline: true },
+    { name: '​',                      value: '​',                                      inline: false },
+    { name: '📬 Claimable Missions', value: `${claimableCount}`,                    inline: true },
+    { name: '⚙️ Unassigned Points',  value: `${player.unassignedPoints}`,            inline: true }
   ];
 
   const embed = createEmbed({
@@ -60,12 +73,23 @@ export async function execute(interaction) {
     interaction
   });
 
-  // Buttons row
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`openAttributes:${discordId}`).setLabel('Attributes').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`openHealing:${discordId}`).setLabel('Healing').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`openMissions:${discordId}`).setLabel('Missions').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`openFactions:${discordId}`).setLabel('Factions').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder()
+      .setCustomId(`openAttributes:${discordId}`)
+      .setLabel('Attributes')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`openHealing:${discordId}`)
+      .setLabel('Healing')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`openMissions:${discordId}`)
+      .setLabel('Missions')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`openFactions:${discordId}`)
+      .setLabel('Factions')
+      .setStyle(ButtonStyle.Secondary)
   );
 
   return interaction.reply({ embeds: [embed], components: [row1], ephemeral: true });
