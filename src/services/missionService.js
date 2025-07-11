@@ -26,20 +26,6 @@ export async function getMaxConcurrentMissions(nftCount) {
 }
 
 /**
- * getReservedHp(discordId)
- * - Sums hpCost of all unclaimed ActiveMissions where endAt > now.
- */
-export async function getReservedHp(discordId) {
-  const now = new Date();
-  const active = await ActiveMission.find({
-    discordId,
-    endAt: { $gt: now },
-    claimed: false
-  }).lean();
-  return active.reduce((sum, m) => sum + m.hpCost, 0);
-}
-
-/**
  * getActiveMissionsCount(discordId)
  * - Returns the number of missions that are currently active (not yet ended, not claimed).
  */
@@ -78,9 +64,9 @@ function computeReducedHpCost(rawCost, agility) {
  * - Validates:
  *    • missionType exists
  *    • player.level >= minLevel
- *    • player holds ≥ 3 NFTs
+ *    • player holds ≥ 1 NFT
  *    • activeMissionsCount < maxConcurrent
- *    • reservedHp + worstHpCostAfterAgility ≤ player.hp
+ *    • player.hp ≥ worstHpCostAfterAgility
  * - Deducts HP immediately
  * - Then randomizes rewards and records ActiveMission.
  */
@@ -116,34 +102,28 @@ export async function startMission({ discordId, missionType }) {
     );
   }
 
-  // 5) Compute reserved HP
-  const reservedHp = await getReservedHp(discordId);
-  const availableHp = player.hp - reservedHp;
-
-  // 6) Compute worst-case HP cost after agility reduction
+  // 5) Compute worst-case HP cost after agility reduction
   const rawMax = missionDef.hpCostRange[1];
   const worstHpCost = computeReducedHpCost(rawMax, player.attributes.agilite);
 
-  if (availableHp < worstHpCost) {
+  if (player.hp < worstHpCost) {
     throw new Error(
-      `Not enough HP available. You have ${player.hp} total, ` +
-      `${reservedHp} reserved, leaving ${availableHp}. ` +
-      `Worst-case HP cost is ${worstHpCost}.`
+      `Not enough HP. You have ${player.hp} HP but the worst-case cost is ${worstHpCost}.`
     );
   }
 
-  // 7) Randomize raw Hp cost in [min..max], then reduce by agility
+  // 6) Randomize raw Hp cost in [min..max], then reduce by agility
   const rawHp =
     Math.floor(
       Math.random() * (missionDef.hpCostRange[1] - missionDef.hpCostRange[0] + 1)
     ) + missionDef.hpCostRange[0];
   const finalHpCost = computeReducedHpCost(rawHp, player.attributes.agilite);
 
-  // 8) Deduct HP immediately
+  // 7) Deduct HP immediately
   player.hp = Math.max(0, player.hp - finalHpCost);
   await player.save();
 
-  // 9) Randomize XP and coin rewards
+  // 8) Randomize XP and coin rewards
   const xpReward =
     Math.floor(
       Math.random() * (missionDef.xpRange[1] - missionDef.xpRange[0] + 1)
@@ -153,7 +133,7 @@ export async function startMission({ discordId, missionType }) {
       Math.random() * (missionDef.coinRange[1] - missionDef.coinRange[0] + 1)
     ) + missionDef.coinRange[0];
 
-  // 10) Create ActiveMission (HP already deducted)
+  // 9) Create ActiveMission (HP already deducted)
   const now = new Date();
   const endAt = new Date(now.getTime() + missionDef.durationMs);
 
