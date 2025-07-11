@@ -31,14 +31,17 @@ function buildBar(p) {
 
 export default async function missionHandler(interaction) {
   const [action, discordId] = interaction.customId.split(':');
+
+  // Only the user who opened the menu can interact
   if (interaction.user.id !== discordId) {
     return interaction.reply({ content: '❌ You cannot manage missions for another user.', ephemeral: true });
   }
 
-  // Load player & common data
+  // Load player (or create if new)
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
+  // Common data
   const nftCount       = await getNFTCount(discordId);
   const { xpBoost, coinsBoost } = getBoosts(nftCount);
   const wisdom         = player.attributes.sagesse;
@@ -48,7 +51,7 @@ export default async function missionHandler(interaction) {
   const activeCount    = await getActiveMissionsCount(discordId);
   const claimableCount = await getClaimableMissionsCount(discordId);
 
-  // 1) OPEN MENU
+  // 1) OPEN MAIN MENU
   if (action === OPEN) {
     const availableList = Object.values(missionsConfig)
       .filter(d => player.level >= d.minLevel)
@@ -59,7 +62,7 @@ export default async function missionHandler(interaction) {
       description:
         `**HP:** ${player.hp}/${player.hpMax}\n` +
         `**Concurrent:** ${activeCount}/${maxConc}\n` +
-        `**NFT Bonus:** +${xpBoost * 100}% XP, +${coinsBoost * 100}% Coins\n` +
+        `**NFT Bonus:** +${(xpBoost*100).toFixed(0)}% XP, +${(coinsBoost*100).toFixed(0)}% Coins\n` +
         `**Wisdom Bonus:** +${wisdom}% XP\n` +
         `**Luck Bonus:** +${luck}% Coins\n` +
         `**Agility:** -${agiReduc}% HP cost\n\n` +
@@ -76,9 +79,8 @@ export default async function missionHandler(interaction) {
       .setCustomId(`${VIEW}:${discordId}`)
       .setLabel('Ongoing Missions')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(activeCount + claimableCount === 0);
+      .setDisabled(activeCount === 0);
 
-    // New “Claim Missions” button on main menu
     const claimBtn = new ButtonBuilder()
       .setCustomId(`${CLAIM}:${discordId}`)
       .setLabel(`Claim Missions (${claimableCount})`)
@@ -87,14 +89,10 @@ export default async function missionHandler(interaction) {
 
     const row = new ActionRowBuilder().addComponents(launchBtn, viewBtn, claimBtn);
 
-    return interaction.reply({
-      embeds: [embed],
-      components: [row],
-      ephemeral: true
-    });
+    return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
   }
 
-  // 2) SHOW LAUNCH SELECT
+  // 2) SHOW LAUNCH OPTIONS
   if (action === LAUNCH) {
     if (nftCount < 1) {
       const embed = createEmbed({
@@ -146,11 +144,13 @@ export default async function missionHandler(interaction) {
     });
   }
 
-  // 3) VIEW ONGOING (no “Claim” button here anymore)
+  // 3) VIEW ONGOING ONLY
   if (action === VIEW) {
     const now = Date.now();
     const ActiveMission = (await import('../../data/models/ActiveMission.js')).default;
-    const running = await ActiveMission.find({ discordId, endAt: { $gt: now }, claimed: false }).lean();
+    const running = await ActiveMission
+      .find({ discordId, endAt: { $gt: now }, claimed: false })
+      .lean();
 
     if (!running.length) {
       const embed = createEmbed({
@@ -161,7 +161,7 @@ export default async function missionHandler(interaction) {
     }
 
     const embed = createEmbed({ title: '⏳ Ongoing Missions', description: '' });
-    running.forEach(m => {
+    for (const m of running) {
       const d   = missionsConfig[m.missionType] || {};
       const pct = Math.min(100, ((now - m.startAt) / (m.endAt - m.startAt)) * 100);
       embed.addFields({
@@ -169,12 +169,12 @@ export default async function missionHandler(interaction) {
         value: `Ends <t:${Math.floor(m.endAt/1000)}:R> • HP: ${m.hpCost} • ${buildBar(pct)}`,
         inline: false
       });
-    });
+    }
 
     return interaction.reply({ embeds: [embed], ephemeral: true });
   }
 
-  // 4) START SELECTED
+  // 4) START SELECTED MISSION
   if (action === SELECT) {
     const choice = interaction.values[0];
     try {
