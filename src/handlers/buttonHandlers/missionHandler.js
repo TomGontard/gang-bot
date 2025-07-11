@@ -32,16 +32,16 @@ function buildBar(p) {
 export default async function missionHandler(interaction) {
   const [action, discordId] = interaction.customId.split(':');
 
-  // Only the user who opened the menu can interact
+  // Seul le lanceur peut interagir
   if (interaction.user.id !== discordId) {
-    return interaction.reply({ content: '❌ You cannot manage missions for another user.', ephemeral: true });
+    return interaction.reply({ content: '❌ You cannot manage missions for another user.', flags: 64 });
   }
 
-  // Load player (or create if new)
+  // Charger ou créer le joueur
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  // Common data
+  // Données communes
   const nftCount       = await getNFTCount(discordId);
   const { xpBoost, coinsBoost } = getBoosts(nftCount);
   const wisdom         = player.attributes.sagesse;
@@ -51,7 +51,7 @@ export default async function missionHandler(interaction) {
   const activeCount    = await getActiveMissionsCount(discordId);
   const claimableCount = await getClaimableMissionsCount(discordId);
 
-  // 1) OPEN MAIN MENU
+  // 1) OUVRIR LE MENU PRINCIPAL
   if (action === OPEN) {
     const availableList = Object.values(missionsConfig)
       .filter(d => player.level >= d.minLevel)
@@ -89,17 +89,21 @@ export default async function missionHandler(interaction) {
 
     const row = new ActionRowBuilder().addComponents(launchBtn, viewBtn, claimBtn);
 
-    return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+    // Première et unique réponse
+    return interaction.reply({ embeds: [embed], components: [row], flags: 64 });
   }
 
-  // 2) SHOW LAUNCH OPTIONS
+  // Pour toutes les autres actions, on décore d’abord, puis on update
+  await interaction.deferUpdate();
+
+  // 2) AFFICHER LES OPTIONS DE LANCEMENT
   if (action === LAUNCH) {
     if (nftCount < 1) {
       const embed = createEmbed({
         title: '❌ Cannot Launch',
         description: 'You need at least **1 Genesis Pass NFT** to start missions.'
       });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     }
 
     const options = Object.entries(missionsConfig)
@@ -123,7 +127,7 @@ export default async function missionHandler(interaction) {
         title: '❌ No Missions',
         description: 'Level too low or insufficient HP.'
       });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     }
 
     const select = new StringSelectMenuBuilder()
@@ -137,31 +141,25 @@ export default async function missionHandler(interaction) {
       fields: [{ name: 'Types', value: `${options.length}`, inline: true }]
     });
 
-    return interaction.reply({
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(select)],
-      ephemeral: true
-    });
+    return interaction.update({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] });
   }
 
-  // 3) VIEW ONGOING ONLY
+  // 3) AFFICHER LES MISSIONS EN COURS
   if (action === VIEW) {
     const now = Date.now();
     const ActiveMission = (await import('../../data/models/ActiveMission.js')).default;
-    const running = await ActiveMission
-      .find({ discordId, endAt: { $gt: now }, claimed: false })
-      .lean();
+    const running = await ActiveMission.find({ discordId, endAt: { $gt: now }, claimed: false }).lean();
 
     if (!running.length) {
       const embed = createEmbed({
         title: 'ℹ️ No Active Missions',
         description: 'You have no missions currently in progress.'
       });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     }
 
     const embed = createEmbed({ title: '⏳ Ongoing Missions', description: '' });
-    for (const m of running) {
+    running.forEach(m => {
       const d   = missionsConfig[m.missionType] || {};
       const pct = Math.min(100, ((now - m.startAt) / (m.endAt - m.startAt)) * 100);
       embed.addFields({
@@ -169,12 +167,12 @@ export default async function missionHandler(interaction) {
         value: `Ends <t:${Math.floor(m.endAt/1000)}:R> • HP: ${m.hpCost} • ${buildBar(pct)}`,
         inline: false
       });
-    }
+    });
 
-    return interaction.reply({ embeds: [embed], ephemeral: true });
+    return interaction.update({ embeds: [embed], components: [] });
   }
 
-  // 4) START SELECTED MISSION
+  // 4) LANCER LA MISSION SÉLECTIONNÉE
   if (action === SELECT) {
     const choice = interaction.values[0];
     try {
@@ -191,14 +189,14 @@ export default async function missionHandler(interaction) {
           { name: 'Coins',   value: `${am.coinReward}`, inline: true }
         ]
       });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     } catch (err) {
       const embed = createEmbed({ title: '❌ Error', description: err.message });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     }
   }
 
-  // 5) CLAIM COMPLETED
+  // 5) CLAIM TERMINÉ
   if (action === CLAIM) {
     try {
       const res = await claimMissionRewards(discordId);
@@ -206,10 +204,10 @@ export default async function missionHandler(interaction) {
         .map(r => `• **${r.missionType}** → ${r.xpReward} XP, ${r.coinReward} coins${r.levelsGained ? `, +${r.levelsGained} lvl` : ''}`)
         .join('\n');
       const embed = createEmbed({ title: '🎉 Missions Claimed', description });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     } catch (err) {
       const embed = createEmbed({ title: '❌ Error', description: err.message });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.update({ embeds: [embed], components: [] });
     }
   }
 }
