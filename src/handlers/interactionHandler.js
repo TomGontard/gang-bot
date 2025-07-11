@@ -5,7 +5,7 @@ import factionHandler from './buttonHandlers/factionHandler.js';
 import missionHandler from './buttonHandlers/missionHandler.js';
 
 export default async function interactionHandler(interaction, client) {
-  // 1️⃣ Slash commands
+  // 1️⃣ Slash‐commands still need to be handled
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -22,36 +22,25 @@ export default async function interactionHandler(interaction, client) {
     return;
   }
 
-  // 2️⃣ Button or Select‐Menu interactions
+  // 2️⃣ Buttons & Selects
   if (interaction.isButton() || interaction.isStringSelectMenu()) {
     const [action] = interaction.customId.split(':');
 
-    if (action === 'openHealing' || action === 'startHealing' || action === 'stopHealing') {
-      await healingHandler(interaction);
-      return;
+    // Healing flow
+    if (['openHealing','startHealing','stopHealing'].includes(action)) {
+      return healingHandler(interaction);
     }
-    if (action === 'openAttributes' || action === 'attrAdd') {
-      await attributesHandler(interaction);
-      return;
+    // Attributes flow
+    if (['openAttributes','attrAdd'].includes(action)) {
+      return attributesHandler(interaction);
     }
-    if (
-      action === 'openFactions' ||
-      action === 'selectFaction' ||
-      action === 'confirmFactionLeave' ||
-      action === 'finalFactionLeave'
-    ) {
-      await factionHandler(interaction);
-      return;
+    // Factions flow
+    if (['openFactions','selectFaction','confirmFactionLeave','finalFactionLeave'].includes(action)) {
+      return factionHandler(interaction);
     }
-    if (
-      action === 'openMissions' ||
-      action === 'launchMission' ||
-      action === 'viewMissions' ||
-      action === 'selectMission' ||
-      action === 'claimMissions'
-    ) {
-      await missionHandler(interaction);
-      return;
+    // Missions flow
+    if (['openMissions','launchMission','viewMissions','selectMission','claimMissions'].includes(action)) {
+      return missionHandler(interaction);
     }
   }
 }
