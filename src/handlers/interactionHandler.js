@@ -1,4 +1,3 @@
-// src/handlers/interactionHandler.js
 import healingHandler from './buttonHandlers/healingHandler.js';
 import attributesHandler from './buttonHandlers/attributesHandler.js';
 import factionHandler from './buttonHandlers/factionHandler.js';
@@ -9,14 +8,19 @@ export default async function interactionHandler(interaction, client) {
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
+
     try {
+      // On réserve immédiatement la réponse pour éviter l'expiration à 3s
+      await interaction.deferReply({ flags: 64 });
+      // On exécute la commande
       await command.execute(interaction);
     } catch (err) {
       console.error('Error executing command:', err);
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ content: '❌ Error executing command.', ephemeral: true });
+      // Si on a déjà différé, on édite, sinon on reply
+      if (interaction.deferred) {
+        await interaction.editReply({ content: '❌ Error executing command.', flags: 64 });
       } else {
-        await interaction.reply({ content: '❌ Error executing command.', ephemeral: true });
+        await interaction.reply({ content: '❌ Error executing command.', flags: 64 });
       }
     }
     return;
@@ -29,7 +33,7 @@ export default async function interactionHandler(interaction, client) {
       await interaction.deferUpdate();
       const page = parseInt(pageStr, 10);
       const newPage = action === 'leaderPrev' ? page - 1 : page + 1;
-      // Dynamically import buildLeaderboard from your leaderboard command
+      // Import dynamique de votre builder
       const { buildLeaderboard } = await import('../commands/leaderboard.js');
       const { embed, components } = await buildLeaderboard(newPage, interaction);
       return interaction.editReply({ embeds: [embed], components });
