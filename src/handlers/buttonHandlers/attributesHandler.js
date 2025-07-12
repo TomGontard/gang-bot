@@ -1,3 +1,4 @@
+// src/handlers/buttonHandlers/attributesHandler.js
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import Player from '../../data/models/Player.js';
 import metrics from '../../config/metrics.js';
@@ -10,7 +11,7 @@ export default async function attributesHandler(interaction) {
 
   // Only the original opener can interact:
   if (interaction.user.id !== targetId) {
-    return interaction.reply({ content: '❌ You cannot manage attributes for another user.', ephemeral: true });
+    return interaction.reply({ content: '❌ You cannot manage attributes for another user.', ephemeral: true, flags: 64 });
   }
 
   const discordId = targetId;
@@ -44,52 +45,57 @@ export default async function attributesHandler(interaction) {
         .setDisabled(player.unassignedPoints < cost);
     });
 
-    return [
-      embed,
-      new ActionRowBuilder().addComponents(buttons.slice(0, 5)),
-      new ActionRowBuilder().addComponents(buttons.slice(5))
-    ];
+    const row1 = new ActionRowBuilder().addComponents(buttons.slice(0, 5));
+    const row2 = new ActionRowBuilder().addComponents(buttons.slice(5));
+    return [embed, row1, row2];
   }
 
-  // 1) OPEN MENU — update the original profile message
+  // 1) OPEN ATTRIBUTES — nouveau message
   if (action === 'openAttributes') {
     const [embed, row1, row2] = buildAttributeEmbedAndButtons();
-    return interaction.update({ embeds: [embed], components: [row1, row2] });
+    return interaction.reply({
+      embeds: [embed],
+      components: [row1, row2],
+      ephemeral: true,
+      flags: 64
+    });
   }
 
-  // 2) ADD POINT — defer then edit
-  await interaction.deferUpdate();
+  // 2) ADD POINT — defer then edit the attributes menu itself
+  if (action === ATTRIB_ADD_PREFIX) {
+    await interaction.deferUpdate();
 
-  const cost = metrics.attributeCosts[attribute];
-  if (player.unassignedPoints < cost) {
-    return interaction.followUp({ content: '❌ You don’t have enough unassigned points.', ephemeral: true });
+    const cost = metrics.attributeCosts[attribute];
+    if (player.unassignedPoints < cost) {
+      return interaction.followUp({ content: '❌ You don’t have enough unassigned points.', ephemeral: true, flags: 64 });
+    }
+
+    // apply the attribute spend
+    switch (attribute) {
+      case 'Vitality':
+        player.attributes.vitalite++;
+        player.hpMax++;
+        break;
+      case 'Wisdom':
+        player.attributes.sagesse++;
+        break;
+      case 'Strength':
+        player.attributes.force++;
+        break;
+      case 'Intelligence':
+        player.attributes.intelligence++;
+        break;
+      case 'Luck':
+        player.attributes.chance++;
+        break;
+      case 'Agility':
+        player.attributes.agilite++;
+        break;
+    }
+    player.unassignedPoints -= cost;
+    await player.save();
+
+    const [embed, newRow1, newRow2] = buildAttributeEmbedAndButtons();
+    return interaction.editReply({ embeds: [embed], components: [newRow1, newRow2] });
   }
-
-  // apply the attribute spend
-  switch (attribute) {
-    case 'Vitality':
-      player.attributes.vitalite++;
-      player.hpMax++;
-      break;
-    case 'Wisdom':
-      player.attributes.sagesse++;
-      break;
-    case 'Strength':
-      player.attributes.force++;
-      break;
-    case 'Intelligence':
-      player.attributes.intelligence++;
-      break;
-    case 'Luck':
-      player.attributes.chance++;
-      break;
-    case 'Agility':
-      player.attributes.agilite++;
-      break;
-  }
-  player.unassignedPoints -= cost;
-  await player.save();
-
-  const [embed, row1, row2] = buildAttributeEmbedAndButtons();
-  return interaction.editReply({ embeds: [embed], components: [row1, row2] });
 }
