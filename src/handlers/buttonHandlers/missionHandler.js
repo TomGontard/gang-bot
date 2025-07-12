@@ -34,10 +34,14 @@ export default async function missionHandler(interaction) {
 
   // only the original user can interact
   if (interaction.user.id !== discordId) {
-    return interaction.reply({ content: '❌ You cannot manage missions for another user.', ephemeral: true });
+    return interaction.reply({
+      content: '❌ You cannot manage missions for another user.',
+      ephemeral: true,
+      flags: 64
+    });
   }
 
-  // fetch or create player
+  // load or create player
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
@@ -51,7 +55,9 @@ export default async function missionHandler(interaction) {
   const activeCount    = await getActiveMissionsCount(discordId);
   const claimableCount = await getClaimableMissionsCount(discordId);
 
-  // 1) OPEN menu — first reply
+  // —— All menu interactions EDIT the existing ephemeral message —— //
+
+  // 1️⃣ OPEN menu
   if (action === OPEN) {
     const available = Object.values(missionsConfig)
       .filter(m => player.level >= m.minLevel)
@@ -64,10 +70,8 @@ export default async function missionHandler(interaction) {
         `**HP:** ${player.hp}/${player.hpMax}\n` +
         `**Concurrent:** ${activeCount}/${maxConc}\n` +
         `**NFT Bonus:** +${(xpBoost*100).toFixed(0)}% XP, +${(coinsBoost*100).toFixed(0)}% Coins\n` +
-        `**Wisdom Bonus:** +${wisdom}% XP\n` +
-        `**Luck Bonus:** +${luck}% Coins\n` +
-        `**Agility:** -${agiReduc}% HP cost\n\n` +
-        `**Available Types (${available.split(', ').length}):** ${available}`
+        `**Wisdom:** +${wisdom}% XP • **Luck:** +${luck}% Coins • **Agility:** -${agiReduc}% HP cost\n\n` +
+        `**Available (${available.split(', ').length}):** ${available}`
     });
 
     const launchBtn = new ButtonBuilder()
@@ -90,13 +94,10 @@ export default async function missionHandler(interaction) {
 
     const row = new ActionRowBuilder().addComponents(launchBtn, viewBtn, claimBtn);
 
-    return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+    return interaction.update({ embeds: [embed], components: [row] });
   }
 
-  // 2–5) subsequent steps: defer then update
-  await interaction.deferUpdate();
-
-  // 2) SHOW launch options
+  // 2️⃣ SHOW launch options
   if (action === LAUNCH) {
     if (nftCount < 1) {
       const embed = createEmbed({
@@ -109,20 +110,23 @@ export default async function missionHandler(interaction) {
     const options = Object.entries(missionsConfig)
       .filter(([, m]) => player.level >= m.minLevel)
       .map(([key, m]) => {
-        const raw = m.hpCostRange[1];
+        const raw       = m.hpCostRange[1];
         const reduction = Math.round(raw * agiReduc / 100);
-        const cost = Math.max(1, raw - reduction);
+        const cost      = Math.max(1, raw - reduction);
         if (player.hp < cost) return null;
         return {
           label: m.displayName,
-          description: `Lvl≥${m.minLevel} • ${m.durationMs/3600000}h • HP ${m.hpCostRange.join('–')} (−${reduction})`,
+          description: `Lvl≥${m.minLevel} • ${m.durationMs/3600000}h • HP ${cost}`,
           value: key
         };
       })
       .filter(Boolean);
 
     if (!options.length) {
-      const embed = createEmbed({ title: '❌ No Missions', description: 'Level too low or insufficient HP.' });
+      const embed = createEmbed({
+        title: '❌ No Missions',
+        description: 'Level too low or insufficient HP.'
+      });
       return interaction.update({ embeds: [embed], components: [] });
     }
 
@@ -143,7 +147,7 @@ export default async function missionHandler(interaction) {
     });
   }
 
-  // 3) VIEW ongoing
+  // 3️⃣ VIEW ongoing missions
   if (action === VIEW) {
     const now = Date.now();
     const ActiveMission = (await import('../../data/models/ActiveMission.js')).default;
@@ -173,10 +177,10 @@ export default async function missionHandler(interaction) {
     return interaction.update({ embeds: [embed], components: [] });
   }
 
-  // 4) START selected
+  // 4️⃣ START selected mission
   if (action === SELECT) {
-    const missionType = interaction.values[0];
     try {
+      const missionType = interaction.values[0];
       const am = await startMission({ discordId, missionType });
       const def = missionsConfig[missionType];
       const embed = createEmbed({
@@ -197,7 +201,7 @@ export default async function missionHandler(interaction) {
     }
   }
 
-  // 5) CLAIM rewards
+  // 5️⃣ CLAIM rewards
   if (action === CLAIM) {
     try {
       const results = await claimMissionRewards(discordId);
