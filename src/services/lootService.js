@@ -2,8 +2,10 @@ import Player from '../data/models/Player.js';
 import { addExperience } from './experienceService.js';
 
 export async function distributeLootToFaction(factionName, { xp = 0, coins = 0 }) {
-  // Récupérer tous les joueurs de la faction
-  const players = await Player.find({ faction: factionName });
+  // match the stored faction field case‐insensitively
+  const players = await Player.find({
+    faction: { $regex: `^${factionName}$`, $options: 'i' }
+  });
   const results = [];
 
   for (const p of players) {
