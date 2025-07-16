@@ -59,12 +59,14 @@ async function buildInterface(player, discordId) {
 
   const rows = [new ActionRowBuilder().addComponents(menu)];
   if (player.faction) {
-    rows.push(new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${CONFIRM}:${discordId}`)
-        .setLabel('Leave Faction')
-        .setStyle(ButtonStyle.Danger)
-    ));
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${CONFIRM}:${discordId}`)
+          .setLabel('Leave Faction')
+          .setStyle(ButtonStyle.Danger)
+      )
+    );
   }
 
   return { embed, components: rows };
@@ -73,7 +75,6 @@ async function buildInterface(player, discordId) {
 export default async function factionHandler(interaction) {
   const [action, discordId] = interaction.customId.split(':');
 
-  // only the menu opener may interact
   if (interaction.user.id !== discordId) {
     return interaction.reply({
       content: '❌ You cannot manage factions for another user.',
@@ -81,11 +82,10 @@ export default async function factionHandler(interaction) {
     });
   }
 
-  // load or create player
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  // 1️⃣ OPEN menu (first & only reply)
+  // 1️⃣ OPEN menu
   if (action === OPEN) {
     const { embed, components } = await buildInterface(player, discordId);
     return interaction.reply({
@@ -96,13 +96,11 @@ export default async function factionHandler(interaction) {
     });
   }
 
-  // —— from here on, edit the original ephemeral message —— //
-
   // 2️⃣ SELECT FACTION
   if (action === SELECT) {
     const chosen = interaction.values[0];
 
-    // cooldown check
+    // cooldown
     if (player.lastFactionChange) {
       const next = new Date(player.lastFactionChange.getTime() + metrics.factionChangeCooldown);
       if (Date.now() < next) {
@@ -114,7 +112,7 @@ export default async function factionHandler(interaction) {
       }
     }
 
-    // balance check
+    // balance
     if (!(await canJoinFaction(chosen))) {
       const errEmbed = createEmbed({
         title: '❌ Cannot Join',
@@ -123,14 +121,26 @@ export default async function factionHandler(interaction) {
       return interaction.update({ embeds: [errEmbed], components: [] });
     }
 
-    // assign
+    // 1) Remove old faction roles
+    const member = await interaction.guild.members.fetch(discordId);
+    const allRoleIds = factionsConfig
+      .map(f => process.env[f.roleEnvVar])
+      .filter(Boolean);
+    await member.roles.remove(allRoleIds);
+
+    // 2) Update DB
     await assignFactionToPlayer(player, chosen);
     player.lastFactionChange = new Date();
     await player.save();
 
-    // sync Discord roles here if needed...
-
+    // 3) Add new role
     const newFaction = factionsConfig.find(f => f.name === chosen);
+    const newRoleId = process.env[newFaction.roleEnvVar];
+    if (newRoleId) {
+      await member.roles.add(newRoleId);
+    }
+
+    // 4) Confirmation
     const joinEmbed = createEmbed({
       title: '✅ Joined Faction',
       description: `You joined **${newFaction.displayName}**!`
@@ -173,6 +183,14 @@ export default async function factionHandler(interaction) {
       return interaction.update({ embeds: [noneEmbed], components: [] });
     }
 
+    // remove all faction roles
+    const member = await interaction.guild.members.fetch(discordId);
+    const allRoleIds = factionsConfig
+      .map(f => process.env[f.roleEnvVar])
+      .filter(Boolean);
+    await member.roles.remove(allRoleIds);
+
+    // DB remove
     await removePlayerFromFaction(player);
     player.lastFactionChange = new Date();
     await player.save();
