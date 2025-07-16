@@ -1,41 +1,73 @@
-import { ButtonInteraction, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+// src/handlers/lootHandler.js
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} from 'discord.js';
+import metrics from '../../config/metrics.js';
 import { distributeLootToFaction } from '../../services/lootService.js';
 import { createEmbed } from '../../utils/createEmbed.js';
 
 const PREFIX = 'claimLoot';
+const FACTION_NAMES = ['RED','BLUE','GREEN'];
 
-export default /** @param {ButtonInteraction} interaction */ async function lootHandler(interaction) {
-  const [ , faction ] = interaction.customId.split(':');
-  const userRoles = interaction.member.roles.cache;
-  const roleId = process.env[`ROLE_${faction.toUpperCase()}_FACTION_ID`];
-
-  // Seul un membre de la faction peut réclamer
-  if (!userRoles.has(roleId)) {
-    return interaction.reply({ content: '❌ Seuls les membres de votre faction peuvent réclamer ce butin.', ephemeral: true });
+export default async function lootHandler(interaction) {
+  const [, idxStr] = interaction.customId.split(':');
+  const idx = parseInt(idxStr, 10);
+  const lootEntry = metrics.lootConfig.messages[idx];
+  if (!lootEntry) {
+    const embed = createEmbed({
+      title: '❌ Loot Not Found',
+      description: 'This loot event could not be located.',
+      interaction
+    });
+    return interaction.reply({ embeds: [embed], ephemeral: true });
   }
 
-  // Distribuer loot (par exemple 50 XP et 100 coins)
-  const { xpReward = 50, coinReward = 100 } = JSON.parse(process.env.LOOT_REWARDS || '{}');
-  const results = await distributeLootToFaction(faction, { xp: xpReward, coins: coinReward });
+  // Determine which faction role the user has
+  const memberRoles = interaction.member.roles.cache;
+  let factionName = null;
+  let factionRoleId = null;
+  for (const name of FACTION_NAMES) {
+    const roleId = process.env[`ROLE_${name}_FACTION_ID`];
+    if (memberRoles.has(roleId)) {
+      factionName = name;
+      factionRoleId = roleId;
+      break;
+    }
+  }
+  if (!factionName) {
+    const embed = createEmbed({
+      title: '❌ Forbidden',
+      description: 'Only members of a faction may claim this loot.',
+      interaction
+    });
+    return interaction.reply({ embeds: [embed], ephemeral: true });
+  }
 
-  // Construire un résumé pour l'embed final
-  const description = `✅ **${interaction.user.displayName}** a réclamé pour **${faction}** !\n`
-    + `Chaque membre gagne **${xpReward} XP** et **${coinReward} coins**.`;
+  // Distribute the loot
+  const { xp, coins } = lootEntry;
+  await distributeLootToFaction(factionName, { xp, coins });
 
-  const embed = createEmbed({ title: '💰 Butin réclamé', description });
+  // Success embed, now pinging the role inside the embed description
+  const description =
+    `✅ **${interaction.user.displayName}** claimed the loot for <@&${factionRoleId}>!\n` +
+    `Each member receives **${xp} XP** and **${coins} coins**.`;
+  const successEmbed = createEmbed({
+    title: '💰 Loot Claimed',
+    description,
+    interaction,
+    timestamp: true
+  });
 
-  // Désactiver tous les boutons
-  const disabledRow = new ActionRowBuilder()
-    .addComponents(
-      ['RED','BLUE','GREEN'].map(col =>
-        new ButtonBuilder()
-          .setCustomId(`${PREFIX}:${col}`)
-          .setLabel(`${col} Faction`)
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(true)
-      )
-    );
+  // Disable that button
+  const disabledRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${PREFIX}:${idx}`)
+      .setLabel('Loot Claimed')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true)
+  );
 
-  // On édite le message d'origine
-  await interaction.update({ embeds: [embed], components: [disabledRow] });
-};
+  return interaction.update({ embeds: [successEmbed], components: [disabledRow] });
+}
