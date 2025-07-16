@@ -75,7 +75,7 @@ export default {
       // Cron expression: run every 6 hours
       cron: '0 */6 * * *',
       // Channel where the bot posts loot
-      channelId: process.env.CHANNEL_LOGS_ID,
+      channelId: process.env.CHANNEL_BOT_ID,
       // Faction roles to ping
       roles: [
         process.env.ROLE_RED_FACTION_ID,
