@@ -1,7 +1,9 @@
+// src/handlers/interactionHandler.js
 import healingHandler from './buttonHandlers/healingHandler.js';
 import attributesHandler from './buttonHandlers/attributesHandler.js';
 import factionHandler from './buttonHandlers/factionHandler.js';
 import missionHandler from './buttonHandlers/missionHandler.js';
+import lootHandler from './buttonHandlers/lootHandler.js';
 
 export default async function interactionHandler(interaction, client) {
   // 1️⃣ Slash‐commands
@@ -37,19 +39,31 @@ export default async function interactionHandler(interaction, client) {
     }
   }
 
-  // 3️⃣ Button ou Select‐Menu
+  // 3️⃣ Button or Select‐Menu interactions
   if (interaction.isButton() || interaction.isStringSelectMenu()) {
     const [action] = interaction.customId.split(':');
 
+    // 🎲 Loot flow
+    if (action === 'claimLoot') {
+      return lootHandler(interaction);
+    }
+
+    // 🛌 Healing flow
     if (['openHealing', 'startHealing', 'stopHealing'].includes(action)) {
       return healingHandler(interaction);
     }
+
+    // 🛠️ Attributes flow
     if (['openAttributes', 'attrAdd'].includes(action)) {
       return attributesHandler(interaction);
     }
+
+    // 🏷️ Factions flow
     if (['openFactions', 'selectFaction', 'confirmFactionLeave', 'finalFactionLeave'].includes(action)) {
       return factionHandler(interaction);
     }
+
+    // 🗂️ Missions flow
     if (['openMissions', 'launchMission', 'viewMissions', 'selectMission', 'claimMissions'].includes(action)) {
       return missionHandler(interaction);
     }
