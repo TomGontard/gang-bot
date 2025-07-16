@@ -67,6 +67,29 @@ export default {
       3: { xpBoost: 0.10, coinsBoost: 0.15, maxConcurrentMissions: 3 },
       4: { xpBoost: 0.10, coinsBoost: 0.15, maxConcurrentMissions: 3 },
       5: { xpBoost: 0.20, coinsBoost: 0.25, maxConcurrentMissions: 3 }
+    },
+
+    // -------------------------------------------------
+    // Loot‐drop configuration (for our cron job)
+    lootConfig: {
+      // Cron expression: run every 6 hours
+      cron: '0 */6 * * *',
+      // Channel where the bot posts loot
+      channelId: process.env.CHANNEL_BOT_ID,
+      // Faction roles to ping
+      roles: [
+        process.env.ROLE_RED_FACTION_ID,
+        process.env.ROLE_BLUE_FACTION_ID,
+        process.env.ROLE_GREEN_FACTION_ID
+      ],
+      // The pool of random loot events
+      messages: [
+        { text: '💼 A crate has been found full of XP!',      xp: 100, coins:   0 },
+        { text: '🚚 A van full of money has run aground...',  xp:   0, coins: 200 },
+        { text: '📦 A stash of coins was uncovered!',         xp:   0, coins: 150 },
+        { text: '🎒 Someone dropped an XP bundle!',           xp:  75, coins:   0 },
+        { text: '💰 A hidden treasure trove of coins!',       xp:   0, coins: 250 }
+      ]
     }
   };
   
