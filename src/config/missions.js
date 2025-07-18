@@ -31,7 +31,46 @@ export default {
     durationMs: 8 * 60 * 60 * 1000,  // 8 hours
     xpRange: [80, 120],
     coinRange: [50, 100],
-    hpCostRange: [40, 60]
+    hpCostRange: [30, 50]
+  },
+  recruitmentDrive: {
+    displayName: '📋 Recruitment Drive',
+    minLevel: 7,
+    durationMs: 1 * 60 * 60 * 1000,  // 1h
+    xpRange: [15, 25],    // seulement de l’XP
+    coinRange: [0, 0],
+    hpCostRange: [5, 8]
+  },
+  surveillance: {
+    displayName: '🎥 Safehouse Surveillance',
+    minLevel: 8,
+    durationMs: 3 * 60 * 60 * 1000,  // 3h
+    xpRange: [25, 35],
+    coinRange: [10, 20],
+    hpCostRange: [10, 15]
+  },
+  drugSmuggling: {
+    displayName: '🚚 Drug Smuggling',
+    minLevel: 10,
+    durationMs: 6 * 60 * 60 * 1000,  // 6h
+    xpRange: [20, 30],
+    coinRange: [100, 150],  // principalement des pièces
+    hpCostRange: [30, 40]
+  },
+  undergroundFight: {
+    displayName: '🥊 Underground Fight',
+    minLevel: 12,
+    durationMs: 2 * 60 * 60 * 1000,  // 2h
+    xpRange: [50, 70],
+    coinRange: [120, 200],
+    hpCostRange: [50, 70]
+  },
+  cryptoHack: {
+    displayName: '💻 Crypto Mining Hack',
+    minLevel: 15,
+    durationMs: 12 * 60 * 60 * 1000, // 12h
+    xpRange: [10, 15],
+    coinRange: [200, 300],  // très rentable en coins
+    hpCostRange: [15, 25]
   }
-  // … add more missions …
 };
