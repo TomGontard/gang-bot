@@ -4,6 +4,7 @@ import attributesHandler from './buttonHandlers/attributesHandler.js';
 import factionHandler from './buttonHandlers/factionHandler.js';
 import missionHandler from './buttonHandlers/missionHandler.js';
 import lootHandler from './buttonHandlers/lootHandler.js';
+import shopHandler from './buttonHandlers/shopHandler.js';
 
 export default async function interactionHandler(interaction, client) {
   // 1️⃣ Slash‐commands
@@ -66,6 +67,14 @@ export default async function interactionHandler(interaction, client) {
     // 🗂️ Missions flow
     if (['openMissions', 'launchMission', 'viewMissions', 'selectMission', 'claimMissions'].includes(action)) {
       return missionHandler(interaction);
+    }
+
+    // 🛒 Shop flow
+    if (['openShop','buyItem'].includes(action)) {
+      return shopHandler(interaction);
+    }
+    if (['openShop','shopPage','shopSelect'].includes(action)) {
+      return shopHandler(interaction);
     }
   }
 }
