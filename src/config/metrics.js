@@ -13,16 +13,20 @@ export default {
         2: 15,
         3: 20,
         4: 30,
-        5: 40
-        // … you can add more levels here
+        5: 40,
+        10: 45,
+        12: 50,
+        15: 60
       },
       baseCoinsPerLevel: {
         1: 5,
         2: 10,
         3: 15,
         4: 25,
-        5: 35
-        // …
+        5: 35,
+        10: 40,
+        12: 45,
+        15: 50
       }
     },
   
@@ -40,6 +44,11 @@ export default {
       8: 1750,
       9: 2200,
       10: 2700,
+      11: 3250,
+      12: 3850,
+      13: 4500,
+      14: 5200,
+      15: 5950,
       // … continue to level 100+ if desired.
       // If undefined, experienceService will treat as “no higher level.”
     },
