@@ -108,12 +108,20 @@ export default async function shopHandler(interaction) {
       player.hp = player.hpMax;
       effectDesc = `HP: **${oldHp} → ${player.hp}/${player.hpMax}**`;
     } else if (item.id === 'resetPotion') {
-      const total = Object.values(player.attributes).reduce((a,v)=>a+v,0);
-      player.unassignedPoints += total;
+      // reset all stats to 5
       player.attributes = {
-        vitalite:0,sagesse:0,force:0,intelligence:0,chance:0,agilite:0
+        vitalite:      5,
+        sagesse:       5,
+        force:         5,
+        intelligence:  5,
+        chance:        5,
+        agilite:       5
       };
-      effectDesc = `Reset **${total}** points; you now have **${player.unassignedPoints}** unassigned.`;
+      // grant 10 * (level - 1) unassigned points
+      player.unassignedPoints = 10 * Math.max(0, (player.level - 1));
+      effectDesc = 
+        `All attributes set to **5**.\n` +
+        `You now have **${player.unassignedPoints}** unassigned points.`;
     } else {
       effectDesc = 'Item added to your inventory.';
       // TODO: push to inventory for non‐immediate items
