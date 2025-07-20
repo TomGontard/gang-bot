@@ -34,14 +34,42 @@ async function buildInterface(player, discordId) {
     };
   }
 
+  // Gather stats for each faction
+  const stats = await Promise.all(factionsConfig.map(async f => {
+    const members = await Player.find({ faction: f.name }).lean();
+    const totalStrength = members.reduce((sum, p) => sum + (p.attributes.force || 0), 0);
+    const totalCoins    = members.reduce((sum, p) => sum + (p.coins || 0), 0);
+    return {
+      name: f.name,
+      displayName: f.displayName,
+      count: members.length,
+      strength: totalStrength,
+      coins: totalCoins
+    };
+  }));
+
+  // Build main embed
+  const embed = createEmbed({
+    title: '🏷️ Factions',
+    description: 'Choose or leave your faction below. Stats per faction:',
+  });
+
+  // Add a field per faction showing stats
+  stats.forEach(s => {
+    embed.addFields({
+      name: s.displayName,
+      value:
+        `Players: **${s.count}**\n` +
+        `Total Strength: **${s.strength}**\n` +
+        `Total Coins: **${s.coins}**`,
+      inline: true
+    });
+  });
+
+  // Current selection placeholder
   const currentDisplay = player.faction
     ? factionsConfig.find(f => f.name === player.faction).displayName
     : null;
-
-  const embed = createEmbed({
-    title: '🏷️ Factions',
-    description: 'Choose or leave your faction below.'
-  });
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`${SELECT}:${discordId}`)
@@ -75,7 +103,7 @@ async function buildInterface(player, discordId) {
 export default async function factionHandler(interaction) {
   const [action, discordId] = interaction.customId.split(':');
 
-  // 0) Sécurité : seul l’initiateur peut interagir
+  // 0) Security: only initiator
   if (interaction.user.id !== discordId) {
     return interaction.reply({
       content: '❌ You cannot manage factions for another user.',
@@ -83,11 +111,11 @@ export default async function factionHandler(interaction) {
     });
   }
 
-  // Charge ou crée le joueur
+  // Load or create player
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  // 1️⃣ OPEN MENU : premier appel, on reply
+  // 1️⃣ OPEN MENU: initial reply
   if (action === OPEN) {
     const { embed, components } = await buildInterface(player, discordId);
     return interaction.reply({
@@ -100,11 +128,10 @@ export default async function factionHandler(interaction) {
 
   // 2️⃣ SELECT FACTION
   if (action === SELECT) {
-    // Ack immédiat
     await interaction.deferUpdate();
 
     const chosen = interaction.values[0];
-    // cooldown
+    // Cooldown check
     if (player.lastFactionChange) {
       const next = new Date(player.lastFactionChange.getTime() + metrics.factionChangeCooldown);
       if (Date.now() < next) {
@@ -115,7 +142,7 @@ export default async function factionHandler(interaction) {
         return interaction.editReply({ embeds: [cdEmbed], components: [] });
       }
     }
-    // balance
+    // Balance check
     if (!(await canJoinFaction(chosen))) {
       const errEmbed = createEmbed({
         title: '❌ Cannot Join',
@@ -124,17 +151,17 @@ export default async function factionHandler(interaction) {
       return interaction.editReply({ embeds: [errEmbed], components: [] });
     }
 
-    // 1) Retire tous les rôles de faction
+    // 1) Remove all faction roles
     const member = await interaction.guild.members.fetch(discordId);
     const allRoleIds = factionsConfig.map(f => process.env[f.roleEnvVar]).filter(Boolean);
     await member.roles.remove(allRoleIds);
 
-    // 2) Mise à jour BDD
+    // 2) Update DB
     await assignFactionToPlayer(player, chosen);
     player.lastFactionChange = new Date();
     await player.save();
 
-    // 3) Ajoute le nouveau rôle
+    // 3) Add new role
     const newFaction = factionsConfig.find(f => f.name === chosen);
     const newRoleId = process.env[newFaction.roleEnvVar];
     if (newRoleId) {
@@ -187,12 +214,12 @@ export default async function factionHandler(interaction) {
       return interaction.editReply({ embeds: [noneEmbed], components: [] });
     }
 
-    // Retire tous les rôles de faction
+    // Remove all faction roles
     const member = await interaction.guild.members.fetch(discordId);
     const allRoleIds = factionsConfig.map(f => process.env[f.roleEnvVar]).filter(Boolean);
     await member.roles.remove(allRoleIds);
 
-    // BDD
+    // DB remove
     await removePlayerFromFaction(player);
     player.lastFactionChange = new Date();
     await player.save();
