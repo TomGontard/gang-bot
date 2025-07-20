@@ -15,7 +15,7 @@ export default {
     durationMs: 2 * 60 * 60 * 1000,  // 2 hours
     xpRange: [10, 20],
     coinRange: [5, 15],
-    hpCostRange: [8, 12]             // raw HP cost between 8 and 12
+    hpCostRange: [8, 12]            
   },
   warehouse: {
     displayName: '🏭 Warehouse Raid',
@@ -37,7 +37,7 @@ export default {
     displayName: '📋 Recruitment Drive',
     minLevel: 7,
     durationMs: 1 * 60 * 60 * 1000,  // 1h
-    xpRange: [15, 25],    // seulement de l’XP
+    xpRange: [15, 25],    // Only XP
     coinRange: [0, 0],
     hpCostRange: [5, 8]
   },
@@ -54,7 +54,7 @@ export default {
     minLevel: 10,
     durationMs: 6 * 60 * 60 * 1000,  // 6h
     xpRange: [20, 30],
-    coinRange: [100, 150],  // principalement des pièces
+    coinRange: [100, 150],  
     hpCostRange: [30, 40]
   },
   undergroundFight: {
@@ -70,7 +70,23 @@ export default {
     minLevel: 15,
     durationMs: 12 * 60 * 60 * 1000, // 12h
     xpRange: [10, 15],
-    coinRange: [200, 300],  // très rentable en coins
+    coinRange: [200, 300],  
     hpCostRange: [15, 25]
+  },
+  assassination: {
+    displayName: '🔫 Assassination',
+    minLevel: 18,
+    durationMs: 10 * 60 * 60 * 1000, // 10h
+    xpRange: [100, 150],
+    coinRange: [50, 100],
+    hpCostRange: [50, 80]
+  },
+  highStakesPoker: {
+    displayName: '♠️ High Stakes Poker',
+    minLevel: 20,
+    durationMs: 4 * 60 * 60 * 1000,  // 4h
+    xpRange: [80, 100],
+    coinRange: [350, 450],
+    hpCostRange: [20, 30]
   }
 };
