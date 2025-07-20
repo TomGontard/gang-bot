@@ -16,7 +16,9 @@ export default {
         5: 40,
         10: 45,
         12: 50,
-        15: 60
+        15: 60,
+        17: 70,
+        20: 80
       },
       baseCoinsPerLevel: {
         1: 5,
@@ -26,7 +28,9 @@ export default {
         5: 35,
         10: 40,
         12: 45,
-        15: 50
+        15: 50,
+        17: 60,
+        20: 70
       }
     },
   
@@ -49,6 +53,11 @@ export default {
       13: 4500,
       14: 5200,
       15: 5950,
+      16: 6750,
+      17: 7600,
+      18: 8500,
+      19: 9450,
+      20: 10450,
       // … continue to level 100+ if desired.
       // If undefined, experienceService will treat as “no higher level.”
     },
@@ -74,7 +83,7 @@ export default {
       1: { xpBoost: 0.00, coinsBoost: 0.00, maxConcurrentMissions: 1 },
       2: { xpBoost: 0.05, coinsBoost: 0.10, maxConcurrentMissions: 2 },
       3: { xpBoost: 0.10, coinsBoost: 0.15, maxConcurrentMissions: 3 },
-      4: { xpBoost: 0.10, coinsBoost: 0.15, maxConcurrentMissions: 3 },
+      4: { xpBoost: 0.10, coinsBoost: 0.20, maxConcurrentMissions: 3 },
       5: { xpBoost: 0.20, coinsBoost: 0.25, maxConcurrentMissions: 3 }
     },
 
