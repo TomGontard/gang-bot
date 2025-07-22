@@ -58,6 +58,16 @@ export default {
       18: 8500,
       19: 9450,
       20: 10450,
+      21: 11500,
+      22: 13500,
+      23: 16000,
+      24: 19000,
+      25: 22500,
+      26: 26500,
+      27: 31000,
+      28: 36000,
+      29: 41500,
+      30: 50000
       // … continue to level 100+ if desired.
       // If undefined, experienceService will treat as “no higher level.”
     },
