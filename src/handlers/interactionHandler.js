@@ -5,15 +5,14 @@ import factionHandler from './buttonHandlers/factionHandler.js';
 import missionHandler from './buttonHandlers/missionHandler.js';
 import lootHandler from './buttonHandlers/lootHandler.js';
 import shopHandler from './buttonHandlers/shopHandler.js';
+import inventoryHandler from './buttonHandlers/inventoryHandler.js';
 
 export default async function interactionHandler(interaction, client) {
-  // 1️⃣ Slash‐commands
+  // 1️⃣ Slash commands
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
-
     try {
-      // Pré‐défère la réponse pour éviter le timeout à 3s
       await interaction.deferReply({ flags: 64 });
       await command.execute(interaction);
     } catch (err) {
@@ -27,7 +26,7 @@ export default async function interactionHandler(interaction, client) {
     return;
   }
 
-  // 2️⃣ Pagination Leaderboard
+  // 2️⃣ Leaderboard pagination
   if (interaction.isButton()) {
     const [action, pageStr, ownerId] = interaction.customId.split(':');
     if ((action === 'leaderPrev' || action === 'leaderNext') && interaction.user.id === ownerId) {
@@ -40,41 +39,52 @@ export default async function interactionHandler(interaction, client) {
     }
   }
 
-  // 3️⃣ Button or Select‐Menu interactions
+  // 3️⃣ Buttons & Selects
   if (interaction.isButton() || interaction.isStringSelectMenu()) {
     const [action] = interaction.customId.split(':');
 
-    // 🎲 Loot flow
+    // 🎲 Loot
     if (action === 'claimLoot') {
       return lootHandler(interaction);
     }
 
-    // 🛌 Healing flow
+    // 🛌 Healing
     if (['openHealing', 'startHealing', 'stopHealing'].includes(action)) {
       return healingHandler(interaction);
     }
 
-    // 🛠️ Attributes flow
+    // 🛠️ Attributes
     if (['openAttributes', 'attrAdd'].includes(action)) {
       return attributesHandler(interaction);
     }
 
-    // 🏷️ Factions flow
+    // 🏷️ Factions
     if (['openFactions', 'selectFaction', 'confirmFactionLeave', 'finalFactionLeave'].includes(action)) {
       return factionHandler(interaction);
     }
 
-    // 🗂️ Missions flow
+    // 🗂️ Missions
     if (['openMissions', 'launchMission', 'viewMissions', 'selectMission', 'claimMissions'].includes(action)) {
       return missionHandler(interaction);
     }
 
-    // 🛒 Shop flow
-    if (['openShop','buyItem'].includes(action)) {
+    // 🛒 Shop
+    if (['openShop', 'shopPage', 'shopSelect'].includes(action)) {
       return shopHandler(interaction);
     }
-    if (['openShop','shopPage','shopSelect'].includes(action)) {
-      return shopHandler(interaction);
+
+    // 🎒 Inventory & Equipment
+    if ([
+      'openInventory',
+      'invPage',
+      'invSelect',
+      'openEquipment',
+      'eqSlot',
+      'eqSelect',
+      'eqConfirm',
+      'invBack'
+    ].includes(action)) {
+      return inventoryHandler(interaction);
     }
   }
 }
