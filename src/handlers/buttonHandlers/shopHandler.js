@@ -5,137 +5,114 @@ import {
   ButtonStyle,
   StringSelectMenuBuilder
 } from 'discord.js';
-import Player from '../../data/models/Player.js';
-import shopItems from '../../config/shopItems.js';
+import { buyItem, getItemDefinition } from '../../services/itemService.js';
+import items from '../../config/items.js';
 import { createEmbed } from '../../utils/createEmbed.js';
+import Inventory from '../../data/models/Inventory.js';
 
 const OPEN   = 'openShop';
 const PAGE   = 'shopPage';
 const SELECT = 'shopSelect';
 
 export default async function shopHandler(interaction) {
-  const parts = interaction.customId.split(':');
-  const action    = parts[0];
-  const discordId = parts[1];
-  const pageIndex = parts[2] ? parseInt(parts[2], 10) : 0;
-
-  // only the opener may shop
+  const [ action, discordId, arg ] = interaction.customId.split(':');
   if (interaction.user.id !== discordId) {
     return interaction.reply({ content: '❌ You cannot shop for another user.', ephemeral: true });
   }
 
-  // load or create player
-  let player = await Player.findOne({ discordId });
-  if (!player) player = await Player.create({ discordId });
+  // 🔄 Fetch inventory
+  let inv = await Inventory.findOne({ discordId });
+  if (!inv) inv = await Inventory.create({ discordId });
 
-  // compute categories/pages
-  const categories = [...new Set(shopItems.map(i => i.category))];
-  const maxPage = categories.length - 1;
-  const thisCategory = categories[pageIndex];
+  // 1️⃣ Build the “pages” by item.type or category
+  const categories = Array.from(new Set(items.map(i => i.type === 'equipment' ? i.category : i.type)));
+  const pageIndex  = arg ? parseInt(arg, 10) : 0;
+  const maxPage    = categories.length - 1;
+  const thisCat    = categories[pageIndex];
 
-  // filter items for this page
-  const pageItems = shopItems.filter(i => i.category === thisCategory);
+  // Items on this page:
+  const allItems = items.filter(i =>
+    (i.type === 'equipment' ? i.category : i.type) === thisCat
+  );
 
-  // 1) OPEN SHOP or PAGE nav
+  // 2️⃣ Filtrer les équipements déjà possédés
+  const pageItems = allItems.filter(i =>
+    i.type !== 'equipment' || !inv.items.includes(i.id)
+  );
+
+  // 3️⃣ OPEN or PAGE: render menu
   if (action === OPEN || action === PAGE) {
-    // build embed
     const embed = createEmbed({
-      title: `🛒 Shop — ${thisCategory} (Page ${pageIndex+1}/${categories.length})`,
-      description: `Select an item to buy with coins.`,
-      fields: pageItems.map(i => ({
-        name: `${i.name} — ${i.cost} coins`,
-        value: i.description
-      })),
+      title: `🛒 Shop — ${thisCat[0].toUpperCase() + thisCat.slice(1)} (${pageIndex+1}/${categories.length})`,
+      description: pageItems.length
+        ? 'Select an item to buy with coins.'
+        : '✅ You already own every item in this category.',
       interaction
     });
 
-    // select menu
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId(`${SELECT}:${discordId}:${pageIndex}`)
-      .setPlaceholder(`Choose a ${thisCategory} item`)
-      .addOptions(
-        pageItems.map(i => ({
-          label: i.name,
-          description: `${i.cost} coins`,
-          value: i.id
-        }))
-      );
-
-    // prev/next buttons
-    const prevBtn = new ButtonBuilder()
-      .setCustomId(`${PAGE}:${discordId}:${pageIndex-1}`)
-      .setLabel('◀️ Prev')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(pageIndex === 0);
-
-    const nextBtn = new ButtonBuilder()
-      .setCustomId(`${PAGE}:${discordId}:${pageIndex+1}`)
-      .setLabel('Next ▶️')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(pageIndex === maxPage);
-
-    const rows = [
-      new ActionRowBuilder().addComponents(menu),
-      new ActionRowBuilder().addComponents(prevBtn, nextBtn)
-    ];
-
-    // initial open -> reply, page nav -> update
-    if (action === OPEN) {
-      return interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
-    } else {
-      return interaction.update({ embeds: [embed], components: rows });
+    if (pageItems.length) {
+      embed.addFields(pageItems.map(i => ({
+        name: `${i.name} — ${i.cost} coins`,
+        value: i.type === 'equipment'
+          ? `Rarity: **${i.rarity}** — +${Object.entries(i.stats).filter(([,v])=>v>0).map(([k,v])=>`+${v} ${k}`).join(', ')}`
+          : i.effect === 'restore_hp'
+            ? 'Fully heals you.'
+            : i.effect === 'reset_attributes'
+              ? 'Resets all attributes.'
+              : ''
+      })));
     }
+
+    const components = [];
+
+    if (pageItems.length) {
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`${SELECT}:${discordId}:${pageIndex}`)
+        .setPlaceholder(`Choose a ${thisCat}`)
+        .addOptions(
+          pageItems.map(i => ({
+            label: i.name,
+            description: `${i.cost} coins`,
+            value: i.id
+          }))
+        );
+      components.push(new ActionRowBuilder().addComponents(menu));
+    }
+
+    const nav = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${PAGE}:${discordId}:${pageIndex - 1}`)
+        .setLabel('◀️ Prev')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(pageIndex === 0),
+      new ButtonBuilder()
+        .setCustomId(`${PAGE}:${discordId}:${pageIndex + 1}`)
+        .setLabel('Next ▶️')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(pageIndex === maxPage)
+    );
+    components.push(nav);
+
+    return action === OPEN
+      ? interaction.reply({ embeds: [embed], components, ephemeral: true })
+      : interaction.update({ embeds: [embed], components });
   }
 
-  // 2) SELECT → PURCHASE
+  // 4️⃣ SELECT → Purchase via service
   if (action === SELECT) {
     const itemId = interaction.values[0];
-    const item = shopItems.find(i => i.id === itemId);
-    if (!item) {
-      return interaction.reply({ content: '❌ Item not found.', ephemeral: true });
+    const def    = getItemDefinition(itemId);
+    try {
+      const { consumed, desc } = await buyItem(discordId, itemId);
+      const embed = createEmbed({
+        title: `✅ Purchased ${def.name}`,
+        description: desc,
+        interaction,
+        timestamp: true
+      });
+      return interaction.update({ embeds: [embed], components: [] });
+    } catch (err) {
+      return interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
     }
-    if (player.coins < item.cost) {
-      return interaction.reply({ content: '❌ Not enough coins.', ephemeral: true });
-    }
-
-    // deduct cost
-    player.coins -= item.cost;
-
-    // immediate effect
-    let effectDesc = '';
-    if (item.id === 'healPotion') {
-      const oldHp = player.hp;
-      player.hp = player.hpMax;
-      effectDesc = `HP: **${oldHp} → ${player.hp}/${player.hpMax}**`;
-    } else if (item.id === 'resetPotion') {
-      // reset all stats to 5
-      player.attributes = {
-        vitalite:      5,
-        sagesse:       5,
-        force:         5,
-        intelligence:  5,
-        chance:        5,
-        agilite:       5
-      };
-      // grant 10 * (level - 1) unassigned points
-      player.unassignedPoints = 10 * Math.max(0, (player.level - 1));
-      effectDesc = 
-        `All attributes set to **5**.\n` +
-        `You now have **${player.unassignedPoints}** unassigned points.`;
-    } else {
-      effectDesc = 'Item added to your inventory.';
-      // TODO: push to inventory for non‐immediate items
-    }
-
-    await player.save();
-
-    const successEmbed = createEmbed({
-      title: `✅ Purchased ${item.name}`,
-      description: effectDesc,
-      interaction,
-      timestamp: true
-    });
-
-    return interaction.update({ embeds: [successEmbed], components: [] });
   }
 }

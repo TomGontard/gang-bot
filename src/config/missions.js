@@ -88,5 +88,21 @@ export default {
     xpRange: [80, 100],
     coinRange: [350, 450],
     hpCostRange: [20, 30]
+  },
+  jewelHeist: {
+    displayName: '💎 Jewel Heist',
+    minLevel: 22,
+    durationMs: 16 * 60 * 60 * 1000, // 24h
+    xpRange: [150, 200],
+    coinRange: [200, 300],
+    hpCostRange: [80, 120]
+  },
+  mansionBreakIn: {
+    displayName: '🏰 Mansion Break-In',
+    minLevel: 25,
+    durationMs: 24 * 60 * 60 * 1000, // 12h
+    xpRange: [150, 250],
+    coinRange: [100, 200],
+    hpCostRange: [100, 120]
   }
 };

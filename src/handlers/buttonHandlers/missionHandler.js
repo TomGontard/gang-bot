@@ -15,6 +15,7 @@ import {
   getMaxConcurrentMissions
 } from '../../services/missionService.js';
 import { getNFTCount, getBoosts } from '../../services/nftService.js';
+import { calculateTotalStats } from '../../services/itemService.js';
 import missionsConfig from '../../config/missions.js';
 
 const OPEN   = 'openMissions';
@@ -32,7 +33,6 @@ function buildBar(percent) {
 export default async function missionHandler(interaction) {
   const [action, discordId] = interaction.customId.split(':');
 
-  // only the original user can interact
   if (interaction.user.id !== discordId) {
     return interaction.reply({
       content: '❌ You cannot manage missions for another user.',
@@ -40,21 +40,17 @@ export default async function missionHandler(interaction) {
     });
   }
 
-  // load or create player
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  // common data
   const nftCount       = await getNFTCount(discordId);
   const { xpBoost, coinsBoost } = getBoosts(nftCount);
-  const wisdom         = player.attributes.sagesse;
-  const luck           = player.attributes.chance;
-  const agiReduc       = player.attributes.agilite;
+  const totalStats     = await calculateTotalStats(player);
   const maxConc        = await getMaxConcurrentMissions(nftCount);
   const activeCount    = await getActiveMissionsCount(discordId);
   const claimableCount = await getClaimableMissionsCount(discordId);
 
-  // 1️⃣ OPEN MENU (new ephemeral reply)
+  // 1️⃣ OPEN MENU
   if (action === OPEN) {
     const available = Object.values(missionsConfig)
       .filter(m => player.level >= m.minLevel)
@@ -68,8 +64,9 @@ export default async function missionHandler(interaction) {
         `**Concurrent:** ${activeCount}/${maxConc}\n` +
         `**NFT Bonus:** +${(xpBoost*100).toFixed(0)}% XP, ` +
           `+${(coinsBoost*100).toFixed(0)}% Coins\n` +
-        `**Wisdom:** +${wisdom}% XP • **Luck:** +${luck}% Coins • ` +
-          `**Agility:** -${agiReduc}% HP cost\n\n` +
+        `**Wisdom:** +${totalStats.sagesse}% XP • ` +
+          `**Luck:** +${totalStats.chance}% Coins • ` +
+          `**Agility:** -${totalStats.agilite}% HP cost\n\n` +
         `**Available (${available.split(', ').length}):** ${available}`
     });
 
@@ -96,7 +93,7 @@ export default async function missionHandler(interaction) {
     return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
   }
 
-  // 2️⃣ LAUNCH → show dropdown (new ephemeral reply)
+  // 2️⃣ LAUNCH → dropdown
   if (action === LAUNCH) {
     if (nftCount < 1) {
       const embed = createEmbed({
@@ -110,7 +107,7 @@ export default async function missionHandler(interaction) {
       .filter(([, m]) => player.level >= m.minLevel)
       .map(([key, m]) => {
         const raw       = m.hpCostRange[1];
-        const reduction = Math.round(raw * agiReduc / 100);
+        const reduction = Math.round(raw * totalStats.agilite / 100);
         const cost      = Math.max(1, raw - reduction);
         if (player.hp < cost) return null;
         return {
