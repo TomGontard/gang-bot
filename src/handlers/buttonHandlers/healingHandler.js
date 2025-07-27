@@ -74,18 +74,21 @@ export default async function healingHandler(interaction) {
 
   // ───── STOP HEALING ─────
   if (action === 'stopHealing') {
-    let hpGained = 0;
-    if (player.healing && player.healStartAt) {
-      const now = Date.now();
-      const blocks = Math.floor((now - player.healStartAt.getTime()) / 720_000); // 12 min block = 5/h
-      const rawHp = Math.floor(blocks * healPerHour);
-      hpGained = Math.min(player.hpMax - player.hp, rawHp);
+      let hpGained = 0;
 
-      player.hp += hpGained;
-      player.healing = false;
-      player.healStartAt = null;
-      await player.save();
-    }
+      if (player.healing && player.healStartAt) {
+        const now = Date.now();
+        const blocks = Math.floor((now - player.healStartAt.getTime()) / 720_000); // 12 min blocks
+        const healPerBlock = healPerHour / 5; // 5 blocks per hour
+        const rawHp = Math.floor(blocks * healPerBlock);
+
+        hpGained = Math.min(player.hpMax - player.hp, rawHp);
+
+        player.hp += hpGained;
+        player.healing = false;
+        player.healStartAt = null;
+        await player.save();
+      }
 
     const embed = createEmbed({
       title: '✅ Healing Completed',
