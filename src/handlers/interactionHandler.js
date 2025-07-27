@@ -54,7 +54,7 @@ export default async function interactionHandler(interaction, client) {
     }
 
     // 🛠️ Attributes
-    if (['openAttributes', 'attrAdd'].includes(action)) {
+    if (['openAttributes', 'attrAdd', 'attrIncrement'].includes(action)) {
       return attributesHandler(interaction);
     }
 

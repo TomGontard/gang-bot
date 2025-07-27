@@ -6,12 +6,12 @@ const equipmentSchema = new mongoose.Schema({
   category:    { type: String, required: true, enum: ['weapon','helmet','chest','pants','shoes','gloves'] },
   rarity:      { type: String, required: true, enum: ['common','uncommon','rare','epic','legendary'] },
   stats: { // additive bonuses
-    vitalite:     { type: Number, default: 0 },
-    sagesse:      { type: Number, default: 0 },
-    force:        { type: Number, default: 0 },
+    vitality:     { type: Number, default: 0 },
+    wisdom:      { type: Number, default: 0 },
+    strength:        { type: Number, default: 0 },
     intelligence: { type: Number, default: 0 },
-    chance:       { type: Number, default: 0 },
-    agilite:      { type: Number, default: 0 }
+    luck:       { type: Number, default: 0 },
+    agility:      { type: Number, default: 0 }
   }
 });
 

@@ -10,6 +10,7 @@ export function getItemDefinition(itemId) {
 export async function buyItem(discordId, itemId) {
   const def = getItemDefinition(itemId);
   if (!def) throw new Error('Item not found.');
+  
   const player = await Player.findOne({ discordId });
   if (!player) throw new Error('Player record missing.');
   if (player.coins < def.cost) throw new Error('Insufficient coins.');
@@ -17,20 +18,29 @@ export async function buyItem(discordId, itemId) {
   player.coins -= def.cost;
   await player.save();
 
+  // Gestion des consommables
   if (def.type === 'consumable') {
-    if (def.effect === 'restore_hp') {
-      player.hp = player.hpMax;
+    if (def.effect.startsWith('restore_hp')) {
+      // Gestion des différentes potions de soin
+      const hpRestoreAmount = parseInt(def.effect.split('_').pop(), 10);
+      const hpBefore = player.hp;
+      player.hp = Math.min(player.hp + hpRestoreAmount, player.hpMax);
       await player.save();
-      return { consumed: true, desc: `HP restored to ${player.hp}/${player.hpMax}` };
+      
+      return {
+        consumed: true,
+        desc: `Restored **${player.hp - hpBefore} HP** (Total: ${player.hp}/${player.hpMax})`
+      };
     }
+
     if (def.effect === 'reset_attributes') {
-      const total = Object.values(player.attributes).reduce((a, v) => a + v, 0);
-      player.unassignedPoints += total + (player.level - 1) * 10;
+      player.unassignedPoints = (player.level - 1) * 10;
       player.attributes = {
         vitalite: 5, sagesse: 5, force: 5,
         intelligence: 5, chance: 5, agilite: 5
       };
       await player.save();
+
       return {
         consumed: true,
         desc: `Reset stats, you have ${player.unassignedPoints} unassigned points`
@@ -38,11 +48,16 @@ export async function buyItem(discordId, itemId) {
     }
   }
 
+  // Gestion de l'équipement
   let inv = await Inventory.findOne({ discordId });
   if (!inv) inv = new Inventory({ discordId });
   inv.items.push(itemId);
   await inv.save();
-  return { consumed: false, desc: `${def.name} added to your inventory.` };
+
+  return {
+    consumed: false,
+    desc: `${def.name} added to your inventory.`
+  };
 }
 
 export async function earnItem(discordId, itemId) {
