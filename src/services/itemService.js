@@ -86,7 +86,7 @@ export async function calculateTotalStats(player) {
     wisdom: 'sagesse',
     vitality: 'vitalite',
     intelligence: 'intelligence',
-    chance: 'chance',
+    luck: 'chance',
     agility: 'agilite'
   };
 

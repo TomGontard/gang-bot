@@ -79,8 +79,8 @@ export default async function healingHandler(interaction) {
       if (player.healing && player.healStartAt) {
         const now = Date.now();
         const blocks = Math.floor((now - player.healStartAt.getTime()) / 720_000); // 12 min blocks
-        const healPerBlock = healPerHour / 5; // 5 blocks per hour
-        const rawHp = Math.floor(blocks * healPerBlock);
+        const healPerBlock = healPerHour; // 5 blocks per hour
+        const rawHp = Math.floor(blocks * healPerBlock / 5);
 
         hpGained = Math.min(player.hpMax - player.hp, rawHp);
 

@@ -2,6 +2,7 @@
 import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import Player from '../data/models/Player.js';
 import Inventory from '../data/models/Inventory.js';
+import { calculateTotalStats } from '../services/itemService.js';
 import { getNFTCount, getBoosts } from '../services/nftService.js';
 import {
   getActiveMissionsCount,
@@ -21,6 +22,11 @@ export async function execute(interaction) {
 
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
+
+  // 🔁 Update hpMax based on vitality (baseStats + equipment)
+  const totalStats = await calculateTotalStats(player);
+  player.hpMax = 100 + totalStats.vitalite + 1 * (player.level - 1);
+  await player.save();
 
   const higherXpCount = await Player.countDocuments({ xp: { $gt: player.xp } });
   const totalPlayers  = await Player.countDocuments();
