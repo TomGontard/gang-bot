@@ -60,7 +60,7 @@ export default [
   {
     "id": "common_boots_3",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Shadow Striders",
     "rarity": "common",
     "cost": 500,
@@ -72,7 +72,7 @@ export default [
   {
     "id": "common_boots_4",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Boots of Achilles",
     "rarity": "common",
     "cost": 500,
@@ -85,7 +85,7 @@ export default [
   {
     "id": "common_leggings_5",
     "type": "equipment",
-    "category": "leggings",
+    "category": "pants",
     "name": "Shadowstep Leggings",
     "rarity": "common",
     "cost": 500,
@@ -98,7 +98,7 @@ export default [
   {
     "id": "common_boots_6",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Boots of Hermes",
     "rarity": "common",
     "cost": 500,
@@ -135,7 +135,7 @@ export default [
   {
     "id": "common_boots_9",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Storm Treads",
     "rarity": "common",
     "cost": 500,
@@ -160,7 +160,7 @@ export default [
   {
     "id": "uncommon_boots_1",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Greaves of the Undying",
     "rarity": "uncommon",
     "cost": 1000,
@@ -174,7 +174,7 @@ export default [
   {
     "id": "uncommon_leggings_2",
     "type": "equipment",
-    "category": "leggings",
+    "category": "pants",
     "name": "Greaves of Titans",
     "rarity": "uncommon",
     "cost": 1000,
@@ -218,7 +218,7 @@ export default [
   {
     "id": "uncommon_boots_5",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Boots of the Wanderer",
     "rarity": "uncommon",
     "cost": 1000,
@@ -294,7 +294,7 @@ export default [
   {
     "id": "uncommon_boots_10",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Greaves of Stability",
     "rarity": "uncommon",
     "cost": 1000,
@@ -309,7 +309,7 @@ export default [
   {
     "id": "rare_leggings_1",
     "type": "equipment",
-    "category": "leggings",
+    "category": "pants",
     "name": "Wraithwalkers",
     "rarity": "rare",
     "cost": 2500,
@@ -372,7 +372,7 @@ export default [
   {
     "id": "rare_leggings_5",
     "type": "equipment",
-    "category": "leggings",
+    "category": "pants",
     "name": "Legplates of the Titan",
     "rarity": "rare",
     "cost": 2500,
@@ -436,7 +436,7 @@ export default [
   {
     "id": "rare_leggings_9",
     "type": "equipment",
-    "category": "leggings",
+    "category": "pants",
     "name": "Pants of Prosperity",
     "rarity": "rare",
     "cost": 2500,
@@ -452,7 +452,7 @@ export default [
   {
     "id": "rare_boots_10",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Shadow Striders",
     "rarity": "rare",
     "cost": 2500,
@@ -499,7 +499,7 @@ export default [
   {
     "id": "epic_boots_3",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Boots of the Swift",
     "rarity": "epic",
     "cost": 5000,
@@ -531,7 +531,7 @@ export default [
   {
     "id": "epic_leggings_5",
     "type": "equipment",
-    "category": "leggings",
+    "category": "pants",
     "name": "Legguards of Swiftness",
     "rarity": "epic",
     "cost": 5000,
@@ -547,7 +547,7 @@ export default [
   {
     "id": "epic_boots_6",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Nightstalker Boots",
     "rarity": "epic",
     "cost": 5000,
@@ -611,7 +611,7 @@ export default [
   {
     "id": "epic_boots_10",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Storm Treads",
     "rarity": "epic",
     "cost": 5000,
@@ -659,7 +659,7 @@ export default [
   {
     "id": "legendary_leggings_3",
     "type": "equipment",
-    "category": "leggings",
+    "category": "pants",
     "name": "Legguards of the Phoenix",
     "rarity": "legendary",
     "cost": 15000,
@@ -755,7 +755,7 @@ export default [
   {
     "id": "legendary_boots_9",
     "type": "equipment",
-    "category": "boots",
+    "category": "shoes",
     "name": "Boots of the Phoenix",
     "rarity": "legendary",
     "cost": 15000,
