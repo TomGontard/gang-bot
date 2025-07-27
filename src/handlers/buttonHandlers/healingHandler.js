@@ -1,25 +1,25 @@
-// src/handlers/buttonHandlers/healingHandler.js
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import Player from '../../data/models/Player.js';
+import { calculateTotalStats } from '../../services/itemService.js';
 import { createEmbed } from '../../utils/createEmbed.js';
 
 export default async function healingHandler(interaction) {
   const [action, discordId] = interaction.customId.split(':');
 
-  // 🛡️ Security
   if (interaction.user.id !== discordId) {
     return interaction.reply({ content: '❌ You cannot control another user’s healing.', ephemeral: true });
   }
 
-  // load or create
   let player = await Player.findOne({ discordId });
   if (!player) player = await Player.create({ discordId });
 
-  const intStat     = player.attributes.intelligence || 0;
+  const totalStats = await calculateTotalStats(player);
+  const intStat = totalStats.intelligence || 0;
   const boostFactor = 1 + intStat / 100;
-  const healDesc    = `Recover **5 HP per hour** (+${intStat}% from Intelligence).`;
+  const healPerHour = boostFactor * 5;
+  const healDesc = `Recover **5 HP/hour** (+${intStat}% from Intelligence → **${healPerHour.toFixed(1)} HP/h**).`;
 
-  // 1️⃣ OPEN MENU — first & only reply()
+  // ───── OPEN HEALING MENU ─────
   if (action === 'openHealing') {
     const embed = createEmbed({
       title: player.healing ? '🛌 Healing In Progress' : '💉 Healing Menu',
@@ -43,12 +43,10 @@ export default async function healingHandler(interaction) {
     });
   }
 
-  // 🚧 All other steps edit the same message via update()
-
-  // 2️⃣ START HEALING
+  // ───── START HEALING ─────
   if (action === 'startHealing') {
     if (!player.healing) {
-      player.healing     = true;
+      player.healing = true;
       player.healStartAt = new Date();
       await player.save();
     }
@@ -57,7 +55,7 @@ export default async function healingHandler(interaction) {
       title: '🛌 Healing Started',
       description: healDesc,
       fields: [
-        { name: 'HP',    value: `${player.hp}/${player.hpMax}`, inline: true },
+        { name: 'HP', value: `${player.hp}/${player.hpMax}`, inline: true },
         { name: 'Since', value: `<t:${Math.floor(player.healStartAt.getTime() / 1000)}:R>`, inline: true }
       ],
       interaction
@@ -74,21 +72,23 @@ export default async function healingHandler(interaction) {
     });
   }
 
-  // 3️⃣ STOP HEALING
+  // ───── STOP HEALING ─────
   if (action === 'stopHealing') {
-    let hpGained = 0;
-    if (player.healing && player.healStartAt) {
-      const now    = Date.now();
-      // 10-minute blocks
-      const blocks = Math.floor((now - player.healStartAt.getTime()) / 720_000);
-      const rawHp  = Math.floor(blocks * boostFactor);
-      hpGained     = Math.min(player.hpMax - player.hp, rawHp);
+      let hpGained = 0;
 
-      player.hp          += hpGained;
-      player.healing     = false;
-      player.healStartAt = null;
-      await player.save();
-    }
+      if (player.healing && player.healStartAt) {
+        const now = Date.now();
+        const blocks = Math.floor((now - player.healStartAt.getTime()) / 720_000); // 12 min blocks
+        const healPerBlock = healPerHour / 5; // 5 blocks per hour
+        const rawHp = Math.floor(blocks * healPerBlock);
+
+        hpGained = Math.min(player.hpMax - player.hp, rawHp);
+
+        player.hp += hpGained;
+        player.healing = false;
+        player.healStartAt = null;
+        await player.save();
+      }
 
     const embed = createEmbed({
       title: '✅ Healing Completed',
@@ -97,7 +97,6 @@ export default async function healingHandler(interaction) {
       interaction
     });
 
-    // offer to continue if not fully healed
     const rows = [];
     if (player.hp < player.hpMax) {
       const contBtn = new ButtonBuilder()
