@@ -2,7 +2,7 @@ export default [
   {
     "id": "healPotion20",
     "type": "consumable",
-    "name": "Small Healing Potion",
+    "name": "Small Healing Potion (+20 HP)",
     "cost": 100,
     "stats": {},
     "effect": "restore_hp_20"
@@ -10,7 +10,7 @@ export default [
   {
     "id": "healPotion50",
     "type": "consumable",
-    "name": "Medium Healing Potion",
+    "name": "Medium Healing Potion (+50 HP)",
     "cost": 200,
     "stats": {},
     "effect": "restore_hp_50"
@@ -18,7 +18,7 @@ export default [
   {
     "id": "healPotion100",
     "type": "consumable",
-    "name": "Large Healing Potion",
+    "name": "Large Healing Potion (+100 HP)",
     "cost": 300,
     "stats": {},
     "effect": "restore_hp_100"

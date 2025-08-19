@@ -1,19 +1,17 @@
 // src/bot.js
 import 'dotenv/config';
-import { Client, Collection, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { Client, Collection, GatewayIntentBits } from 'discord.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import cron from 'node-cron';
 import { connectDatabase } from './data/database.js';
 import interactionHandler from './handlers/interactionHandler.js';
-import metrics from './config/metrics.js';
-import { createEmbed } from './utils/createEmbed.js';
+import { sendLootDrop } from './services/lootService.js';
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.commands = new Collection();
 
-// 1) Load all slash commands into client.commands
+// Charge toutes les commandes
 async function loadCommands(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
@@ -21,62 +19,48 @@ async function loadCommands(dir) {
       await loadCommands(full);
     } else if (entry.name.endsWith('.js')) {
       const mod = await import(pathToFileURL(full).href);
-      if (mod.data && mod.execute) {
-        client.commands.set(mod.data.name, mod);
-      }
+      if (mod.data && mod.execute) client.commands.set(mod.data.name, mod);
     }
   }
 }
 await loadCommands(path.join(process.cwd(), 'src', 'commands'));
 
-// 2) When ready, schedule loot drops
+// Planificateur aléatoire 4–8 h
+let lootTimer = null;
+function randomDelayMs(minHours = 4, maxHours = 8) {
+  const min = minHours * 60 * 60 * 1000;
+  const max = maxHours * 60 * 60 * 1000;
+  return Math.floor(min + Math.random() * (max - min));
+}
+
+function scheduleNextRandomLoot() {
+  const delay = randomDelayMs(4, 8);
+  const h = Math.floor(delay / 3600000);
+  const m = Math.floor((delay % 3600000) / 60000);
+  console.log(`⏱️ Next random loot in ~${h}h${m ? ` ${m}m` : ''}…`);
+  lootTimer = setTimeout(async () => {
+    try {
+      const res = await sendLootDrop(client);
+      if (res) console.log(`📦 Loot sent (idx: ${res.idx}, msg: ${res.messageId}).`);
+      else console.warn('⚠️ Loot send failed.');
+    } catch (e) {
+      console.error('❌ Error sending random loot:', e);
+    } finally {
+      scheduleNextRandomLoot(); // boucle
+    }
+  }, delay);
+}
+
+// Ready
 client.once('ready', () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
-
-  cron.schedule(metrics.lootConfig.cron, async () => {
-    try {
-      const { channelId, roles, messages } = metrics.lootConfig;
-      const channel = await client.channels.fetch(channelId);
-      if (!channel?.isTextBased()) return;
-
-      // Pick a random loot event
-      const idx = Math.floor(Math.random() * messages.length);
-      const { text } = messages[idx];
-
-      // Build claim button
-      const claimBtn = new ButtonBuilder()
-        .setCustomId(`claimLoot:${idx}`)
-        .setLabel('Claim Loot')
-        .setStyle(ButtonStyle.Primary);
-      const row = new ActionRowBuilder().addComponents(claimBtn);
-
-      // Prepare the role mentions in content (outside embed)
-      const mention = roles.map(id => `<@&${id}>`).join(' ');
-
-      // Build a clean embed
-      const embed = createEmbed({
-        title: '💥 A Wild Shipment Has Appeared!',
-        description: text,
-        timestamp: true
-      });
-
-      // Send message with content for pings, plus embed below
-      await channel.send({
-        content: mention,
-        embeds: [embed],
-        components: [row]
-      });
-    } catch (err) {
-      console.error('Error scheduling loot drop:', err);
-    }
-  });
-
+  scheduleNextRandomLoot();
 });
 
-// 3) Delegate all interactions
+// Interactions
 client.on('interactionCreate', interaction => interactionHandler(interaction, client));
 
-// 4) Connect DB + login
+// DB + Login
 (async () => {
   await connectDatabase();
   await client.login(process.env.DISCORD_TOKEN);

@@ -125,7 +125,7 @@ export default {
     displayName: '🗺️ Heist Planning',
     minLevel: 32,
     durationMs: 24 * 60 * 60 * 1000, // 24h
-    xpRange: [500, 800],
+    xpRange: [500, 600],
     coinRange: [250, 300],
     hpCostRange: [40, 50]
   },

@@ -12,6 +12,7 @@ import {
 import metrics from '../config/metrics.js';
 import factionsConfig from '../config/factions.js';
 import { createEmbed } from '../utils/createEmbed.js';
+import { computeHpMax, clampHp } from '../services/playerService.js';
 
 export const data = new SlashCommandBuilder()
   .setName('profile')
@@ -25,7 +26,8 @@ export async function execute(interaction) {
 
   // 🔁 Update hpMax based on vitality (baseStats + equipment)
   const totalStats = await calculateTotalStats(player);
-  player.hpMax = 100 + totalStats.vitalite + 1 * (player.level - 1);
+  player.hpMax = computeHpMax(player, totalStats);
+  clampHp(player);
   await player.save();
 
   const higherXpCount = await Player.countDocuments({ xp: { $gt: player.xp } });
