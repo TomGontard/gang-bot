@@ -89,9 +89,6 @@ export async function execute(interaction) {
   if (sub === 'add') {
     newVal = current + amount;
     player.attributes[field] = newVal;
-    if (map.hpKey) {
-      player[map.hpKey] = (player[map.hpKey] || 0) + amount;
-    }
   } else {
     newVal = Math.max(0, current - amount);
     const removed = current - newVal;

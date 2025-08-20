@@ -79,7 +79,6 @@ export default async function attributesHandler(interaction) {
     }
 
     player.attributes[key] += amount;
-    if (attr === 'Vitality') player.hpMax += amount;
     player.unassignedPoints -= cost;
     await player.save();
 

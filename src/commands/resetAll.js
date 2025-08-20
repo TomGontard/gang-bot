@@ -1,6 +1,8 @@
 // src/commands/resetAll.js
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import Player from '../data/models/Player.js';
+import { calculateTotalStats } from '../services/itemService.js';
+import { computeHpMax, clampHp } from '../services/playerService.js';
 
 export const data = new SlashCommandBuilder()
   .setName('resetall')
@@ -22,6 +24,9 @@ export async function execute(interaction) {
       chance: 5,
       agilite: 5,
     };
+    const total = await calculateTotalStats(player);
+    player.hpMax = computeHpMax(player, total);
+    player.hp = player.hpMax; // Reset hp to max
     await player.save();
     count++;
   }

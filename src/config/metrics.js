@@ -154,6 +154,65 @@ export default {
         { text: '🎒 Someone dropped an XP bundle!',           xp:  75, coins:   0 },
         { text: '💰 A hidden treasure trove of coins!',       xp:   0, coins: 250 }
       ]
+    },
+    
+    faction: {
+      territory: {
+        rows: 3,
+        cols: 3,
+        baseDailyPerTile: 1000,
+
+        buildings: {
+          // 💰 Génère des coins / +1 défenseur tous les 2 niveaux à partir de L2
+          cash: {
+            displayName: 'Cash Den',
+            costBase: 5000,
+            costGrowth: 2,
+            coinPerLevel: 1000,
+            forceAuraPerLevel: 0,
+            luckAuraPerLevel: 0,
+            extraDef: { startLevel: 2, every: 2 }
+          },
+          // 🍀 Luck / +1 défenseur tous les 2 niveaux à partir de L1
+          casino: {
+            displayName: 'Casino',
+            costBase: 5000,
+            costGrowth: 2,
+            coinPerLevel: 0,
+            forceAuraPerLevel: 0,
+            luckAuraPerLevel: 50,
+            extraDef: { startLevel: 1, every: 2 }
+          },
+          // 🛡️ Force / +1 défenseur chaque niveau
+          armory: {
+            displayName: 'Armory',
+            costBase: 8000,
+            costGrowth: 2,
+            coinPerLevel: 0,
+            forceAuraPerLevel: 75,
+            luckAuraPerLevel: 0,
+            extraDef: { startLevel: 1, every: 1 }
+          }
+        },
+
+        fort: {
+          costBase: 10000,
+          costGrowth: 2.0,
+          forcePerLevel: 50,
+          // +1 slot défenseur tous les X niveaux de fort
+          extraDefEvery: 1
+        }
+      },
+
+      defense: {
+        minHours: 24,
+        maxHours: 72
+      },
+      attack: {
+        durationMs: 24 * 60 * 60 * 1000,
+        attackerLimitDivisor: 3
+      }
     }
-  };
+  
+};
   
