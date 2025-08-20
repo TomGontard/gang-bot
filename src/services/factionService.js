@@ -1,4 +1,3 @@
-// src/services/factionService.js
 import Faction from '../data/models/Faction.js';
 import factionsConfig from '../config/factions.js';
 import Player from '../data/models/Player.js';
@@ -46,14 +45,10 @@ export async function assignFactionToPlayer(player, factionName) {
   }
 
   const targetFaction = await Faction.findOne({ name: factionName });
-  if (!targetFaction) {
-    throw new Error('That faction does not exist.');
-  }
+  if (!targetFaction) throw new Error('That faction does not exist.');
 
   const allowed = await canJoinFaction(factionName);
-  if (!allowed) {
-    throw new Error('Cannot join: faction would become too large compared to others.');
-  }
+  if (!allowed) throw new Error('Cannot join: faction would become too large compared to others.');
 
   // Remove from old faction if present
   if (player.faction) {
@@ -74,9 +69,7 @@ export async function assignFactionToPlayer(player, factionName) {
 }
 
 export async function removePlayerFromFaction(player) {
-  if (!player.faction) {
-    throw new Error('You are not in any faction.');
-  }
+  if (!player.faction) throw new Error('You are not in any faction.');
   const oldFaction = await Faction.findOne({ name: player.faction });
   if (oldFaction) {
     oldFaction.membersCount = Math.max(0, oldFaction.membersCount - 1);

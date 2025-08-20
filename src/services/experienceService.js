@@ -37,7 +37,6 @@ export async function addExperience(player, xpAmount) {
       // Level up
       player.level += 1;
       player.unassignedPoints += 10;
-      player.hpMax += metrics.hpPerLevel;
       levelsGained += 1;
     } else {
       break;
