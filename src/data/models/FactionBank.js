@@ -5,6 +5,9 @@ const FactionBankSchema = new mongoose.Schema({
   faction:  { type: String, enum: ['Red','Blue','Green'], unique: true },
   treasury: { type: Number, default: 0 },
   lastInterestAt: { type: Date, default: Date.now },
+  managerDiscordId:   { type: String, default: null },
+  managerValidUntil:  { type: Date,   default: null },
+
 
   // ⬇️ Suivi des dons « aujourd’hui »
   dailyDonationGross:           { type: Number, default: 0 }, // total donné par la faction (brut)
