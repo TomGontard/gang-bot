@@ -1,4 +1,3 @@
-// src/handlers/interactionHandler.js
 import healingHandler from './buttonHandlers/healingHandler.js';
 import attributesHandler from './buttonHandlers/attributesHandler.js';
 import factionHandler from './buttonHandlers/factionHandler.js';
@@ -41,6 +40,19 @@ export default async function interactionHandler(interaction, client) {
 
   // 3) Buttons & Selects (route to handlers)
   if (interaction.isButton() || interaction.isStringSelectMenu()) {
+    // ✅ Manager vote select menu
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('mgrVote:')) {
+      const [, electionId] = interaction.customId.split(':');
+      const candidateId = interaction.values?.[0];
+      try {
+        const { castManagerVote } = await import('../services/managerService.js');
+        await castManagerVote(electionId, interaction.user.id, candidateId);
+        return interaction.reply({ content: `✅ Your vote for <@${candidateId}> has been recorded.`, ephemeral: true });
+      } catch (e) {
+        return interaction.reply({ content: `❌ ${e.message}`, ephemeral: true });
+      }
+    }
+
     const [action] = interaction.customId.split(':');
 
     if (action === 'claimLoot') return lootHandler(interaction);
@@ -51,55 +63,42 @@ export default async function interactionHandler(interaction, client) {
       'openFactions','selectFaction','confirmFactionLeave','finalFactionLeave',
       'fStats','fMap','fDefJoin','fDefLeave','fAtkStart','fAtkJoin',
       'fBuild','fBuildChoose','fBuildUp','fBuildDestroy','fFortUp',
-      'fDonateOpen','fBankDepositOpen','fGuide'
+      'fDonateOpen','fBankDepositOpen','fGuide',
+      'fMgrStart','fMgrVote','fMgrFinalize'
     ].includes(action)) {
       return factionHandler(interaction);
     }
 
-    if (['openMissions', 'launchMission', 'viewMissions', 'selectMission', 'claimMissions'].includes(action)) {
+    if (['openMissions','launchMission','viewMissions','selectMission','claimMissions'].includes(action)) {
       return missionHandler(interaction);
     }
-    if (['openShop', 'shopPage', 'shopSelect'].includes(action)) return shopHandler(interaction);
+    if (['openShop','shopPage','shopSelect'].includes(action)) return shopHandler(interaction);
     if (['openInventory','invPage','invSelect','openEquipment','eqSlot','eqSelect','eqConfirm','invBack'].includes(action)) {
       return inventoryHandler(interaction);
     }
   }
 
+
   // 4) Modal submit
   if (interaction.isModalSubmit()) {
     const [action, discordId] = interaction.customId.split(':');
-    if (interaction.user.id !== discordId) {
-      return interaction.reply({ content:'❌ Not yours.', ephemeral:true });
+
+    // Route the treasury deposit modal to the faction handler
+    if (action === 'fTreasuryDepositSubmit') {
+      return factionHandler(interaction);
     }
 
-    // 4a) Donation (75/25 redistribution)
+    // Donation (75/25 redistribution) kept here
     if (action === 'fDonateSubmit') {
+      if (interaction.user.id !== discordId) {
+        return interaction.reply({ content:'❌ Not yours.', ephemeral:true });
+      }
       const { recordFactionDonation } = await import('../services/donationService.js');
       const amount = parseInt(interaction.fields.getTextInputValue('amount') || '0', 10) || 0;
       try {
         await recordFactionDonation({ donorId: discordId, amount });
         return interaction.reply({
           content: `✅ Donated **${amount}**. **75%** platform • **25%** redistributed at **12:00 UTC**.`,
-          ephemeral: true
-        });
-      } catch (e) {
-        return interaction.reply({ content: `❌ ${e.message}`, ephemeral: true });
-      }
-    }
-
-    // 4b) Treasury deposit (75% treasury, 25% tax → daily redistribution)
-    if (action === 'fTreasuryDepositSubmit') {
-      const { depositToFactionTreasury } = await import('../services/donationService.js');
-      const amount = parseInt(interaction.fields.getTextInputValue('amount') || '0', 10) || 0;
-      try {
-        const res = await depositToFactionTreasury({ depositorId: discordId, amount });
-        return interaction.reply({
-          content:
-            `🏦 Deposit confirmed\n` +
-            `• Amount: **${res.amount}**\n` +
-            `• Treasury credited (75%): **+${res.netToTreasury}**\n` +
-            `• Tax (25%) → daily redistribution at **12:00 UTC**: **${res.taxToPool}**\n` +
-            `• New treasury: **${res.newTreasury}**`,
           ephemeral: true
         });
       } catch (e) {

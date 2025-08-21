@@ -1,4 +1,3 @@
-// src/handlers/buttonHandlers/factionHandler.js
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -28,7 +27,6 @@ import {
 import { startAttack, joinAttack } from '../../services/warService.js';
 import { computeFactionAPR } from '../../services/bankService.js';
 import { calculateTotalStats } from '../../services/itemService.js';
-// ⛔️ plus d'import du donationService ici
 
 import metrics from '../../config/metrics.js';
 import factionsConfig from '../../config/factions.js';
@@ -53,6 +51,11 @@ const F_FORT_UP      = 'fFortUp';
 const F_BANK_DEP_OPEN= 'fBankDepositOpen';
 const F_GUIDE        = 'fGuide';
 
+// 🗳 Manager election
+const F_MGR_START    = 'fMgrStart';
+const F_MGR_VOTE     = 'fMgrVote';
+const F_MGR_FINALIZE = 'fMgrFinalize';
+
 const hrs = n => n*60*60*1000;
 const ts  = d => Math.floor(new Date(d).getTime()/1000);
 const safeNum = (n,d=0)=>Number.isFinite(n)?n:d;
@@ -74,6 +77,46 @@ function factionDisplay(name){
 }
 function ownerLabel(name){ return name ? factionDisplay(name) : '—'; }
 
+function getFactionChannelId(faction){
+  if (faction==='Red') return process.env.CHANNEL_RED_ID;
+  if (faction==='Blue') return process.env.CHANNEL_BLUE_ID;
+  if (faction==='Green') return process.env.CHANNEL_GREEN_ID;
+  return null;
+}
+
+function canStartManagerElection(bank){
+  const now = new Date();
+  const managerActive =
+    !!bank?.managerDiscordId &&
+    !!bank?.managerTermEndAt &&
+    new Date(bank.managerTermEndAt) > now;
+
+  const electionActive =
+    !!bank?.currentElection?.endsAt &&
+    new Date(bank.currentElection.endsAt) > now;
+
+  return !managerActive && !electionActive;
+}
+
+
+async function isFactionManager(userId, faction){
+  const bank = await FactionBank.findOne({ faction });
+  if (!bank?.managerDiscordId) return false;
+  if (bank.managerTermEndAt && new Date(bank.managerTermEndAt) < new Date()) return false;
+  return bank.managerDiscordId === userId;
+}
+async function requireManager(interaction, player){
+  const bank = await FactionBank.findOne({ faction: player.faction });
+  if (!bank?.managerDiscordId || (bank.managerTermEndAt && new Date(bank.managerTermEndAt)<new Date())){
+    throw new Error('No active manager. Start an election in your faction channel.');
+  }
+  if (bank.managerDiscordId !== interaction.user.id){
+    throw new Error('Only the elected manager can spend the faction treasury.');
+  }
+  return bank;
+}
+
+// ⬇️ Carte monospace
 function mapBlockFrom(tiles, rows, cols){
   const lines=[];
   for (let r=0;r<rows;r++){
@@ -87,7 +130,7 @@ function mapBlockFrom(tiles, rows, cols){
   return '```' + lines.join('\n\n') + '```';
 }
 
-/* --------- faction breakdown (dashboards) --------- */
+/* --------- faction breakdown --------- */
 async function computeFactionBreakdown(allTiles, faction){
   const bank = await (FactionBank.findOne({ faction }) || { treasury:0 });
   const members = await Player.find({ faction }).lean();
@@ -317,9 +360,17 @@ async function buildStatsAndMapEmbedsAndComponents(userId, playerFaction){
     createEmbed({ title: '📊 Map', description: mapBlockFrom(tiles, rows, cols) })
   ];
 
+  const extraRows = [];
+
   if (playerFaction){
     const b = await computeFactionBreakdown(tiles, playerFaction);
     const display = factionDisplay(playerFaction);
+
+    // Manager info
+    const bank = await FactionBank.findOne({ faction: playerFaction });
+    const mgr = bank?.managerDiscordId ? `<@${bank.managerDiscordId}>` : '_None_';
+    const term = bank?.managerTermEndAt ? `<t:${Math.floor(new Date(bank.managerTermEndAt).getTime()/1000)}:R>` : '—';
+
     embeds.push(createEmbed({
       title: `🏴 Your Faction — ${display}`,
       description:
@@ -336,15 +387,18 @@ async function buildStatsAndMapEmbedsAndComponents(userId, playerFaction){
         `Daily Income → Treasury: **${b.income.total}**\n` +
         `- Tiles: **${b.income.tiles}**\n` +
         `- Buildings: **${b.income.buildings}**\n` +
-        `Interest/day per player: **${b.perPlayer.interest}** (APR ${(safeNum(b.apr)*100).toFixed(2)}%)`
+        `Interest/day per player: **${b.perPlayer.interest}** (APR ${(safeNum(b.apr)*100).toFixed(2)}%)\n\n` +
+        `**Manager**: ${mgr} • Term ends: ${term}`
     }));
 
     embeds.push(createEmbed({
       title: '💸 Donations & Deposits',
       description:
         '• **Donations**: 75% → platform • 25% → **redistributed daily (12:00 UTC)** to players of the **other factions**.\n' +
-        '• **Treasury deposits**: **25% tax** → same daily redistribution • **75%** → **faction treasury**.'
+        '• **Treasury deposits**: **25% tax** → same daily redistribution • **75%** → **faction treasury**.\n' +
+        '• **Spending the treasury is restricted to the elected manager.**'
     }));
+
   }
 
   const select = new StringSelectMenuBuilder()
@@ -359,12 +413,13 @@ async function buildStatsAndMapEmbedsAndComponents(userId, playerFaction){
     new ButtonBuilder().setCustomId(`${F_BANK_DEP_OPEN}:${userId}`).setLabel('🏦 Deposit to Treasury').setStyle(ButtonStyle.Primary)
   );
 
-  return { embeds, components: [new ActionRowBuilder().addComponents(select), row] };
+  return { embeds, components: [new ActionRowBuilder().addComponents(select), row, ...extraRows] };
 }
 
 /* ----------------------------- handler ----------------------------- */
 export default async function factionHandler(interaction){
-  const [action, discordId, arg1, arg2] = interaction.customId.split(':');
+  const parts = interaction.customId.split(':');
+  const [action, discordId, arg1, arg2] = parts;
 
   // Modal submit: Deposit to treasury (25% tax → redistribution; 75% → treasury)
   if (action === 'fTreasuryDepositSubmit'){
@@ -410,7 +465,161 @@ export default async function factionHandler(interaction){
     }
   }
 
-  if (interaction.user.id !== discordId){
+  // 🗳️ Start election (post in faction channel)
+  if (action === F_MGR_START){
+    try{
+      if (interaction.user.id !== discordId) return interaction.reply({ content:'❌ Not yours.', ephemeral:true });
+      const player = await Player.findOne({ discordId });
+      if (!player?.faction) return interaction.reply({ content:'❌ Join a faction first.', ephemeral:true });
+
+      const bank = await FactionBank.findOne({ faction: player.faction }) || await FactionBank.create({ faction: player.faction });
+      // If active manager term still valid, block new election
+      if (bank.managerDiscordId && (!bank.managerTermEndAt || new Date(bank.managerTermEndAt) > new Date())){
+        return interaction.reply({ content:'⏳ Manager term is still active. Election not allowed yet.', ephemeral:true });
+      }
+      // If election already active, block
+      if (bank.currentElection?.endsAt && new Date(bank.currentElection.endsAt) > new Date()){
+        return interaction.reply({ content:'🗳️ An election is already running.', ephemeral:true });
+      }
+
+      const channelId = getFactionChannelId(player.faction);
+      if (!channelId) return interaction.reply({ content:'❌ Faction channel is not configured.', ephemeral:true });
+
+      const members = await Player.find({ faction: player.faction }).lean();
+      if (!members.length) return interaction.reply({ content:'❌ No candidates available.', ephemeral:true });
+
+      // Build options (max 25)
+      const options = [];
+      for (const m of members){
+        let label = m.discordId;
+        try{
+          const gm = await interaction.guild.members.fetch(m.discordId);
+          label = gm?.displayName || gm?.user?.username || m.discordId;
+        }catch{ /* ignore */ }
+        options.push({ label: label.slice(0,100), value: m.discordId });
+      }
+      const limited = options.slice(0,25);
+
+      const electionId = `${Date.now()}`;
+      const voteMenu = new StringSelectMenuBuilder()
+        .setCustomId(`${F_MGR_VOTE}:${player.faction}:${electionId}`)
+        .setPlaceholder('Select your manager')
+        .setMinValues(1).setMaxValues(1)
+        .addOptions(limited);
+      const finalizeBtn = new ButtonBuilder()
+        .setCustomId(`${F_MGR_FINALIZE}:${player.faction}:${electionId}`)
+        .setLabel('Finalize Election')
+        .setStyle(ButtonStyle.Success);
+
+      const ch = await interaction.client.channels.fetch(channelId);
+      const e = createEmbed({
+        title: `🗳️ ${factionDisplay(player.faction)} — Manager Election`,
+        description:
+          `Vote lasts **24h**. Choose one candidate below. One vote per player (latest vote counts).\n` +
+          `Only the elected **Manager** will be able to **spend the faction treasury** for the next **7 days**.`
+      });
+      const msg = await ch.send({
+        embeds:[e],
+        components:[
+          new ActionRowBuilder().addComponents(voteMenu),
+          new ActionRowBuilder().addComponents(finalizeBtn)
+        ]
+      });
+
+      bank.currentElection = {
+        id: electionId,
+        channelId,
+        messageId: msg.id,
+        startedAt: new Date(),
+        endsAt: new Date(Date.now()+hrs(24)),
+        votes: {} // { voterId: candidateId }
+      };
+      await bank.save();
+
+      return interaction.reply({ content:`✅ Election started in <#${channelId}> (closes <t:${Math.floor(bank.currentElection.endsAt.getTime()/1000)}:R>).`, ephemeral:true });
+    }catch(e){
+      return interaction.reply({ content:`❌ ${e.message}`, ephemeral:true });
+    }
+  }
+
+  // 🗳️ Cast / update vote
+  if (action === F_MGR_VOTE && interaction.isStringSelectMenu?.()){
+    try{
+      const [ , faction, electionId ] = parts; // customId: fMgrVote:<faction>:<electionId>
+      const bank = await FactionBank.findOne({ faction });
+      if (!bank?.currentElection || bank.currentElection.id !== electionId){
+        return interaction.reply({ content:'❌ This election is no longer active.', ephemeral:true });
+      }
+      if (new Date(bank.currentElection.endsAt) < new Date()){
+        return interaction.reply({ content:'⏳ Election has ended. Ask someone to finalize.', ephemeral:true });
+      }
+      const voter = interaction.user.id;
+      const candidateId = interaction.values?.[0];
+      const isMember = await Player.exists({ discordId: candidateId, faction });
+      if (!isMember) return interaction.reply({ content:'❌ Candidate is not in this faction.', ephemeral:true });
+
+      // Record vote (latest counts)
+      bank.currentElection.votes = bank.currentElection.votes || {};
+      bank.currentElection.votes[voter] = candidateId;
+      await bank.save();
+
+      return interaction.reply({ content:`✅ Your vote has been recorded for <@${candidateId}>.`, ephemeral:true });
+    }catch(e){
+      return interaction.reply({ content:`❌ ${e.message}`, ephemeral:true });
+    }
+  }
+
+  // 🗳️ Finalize election (after 24h)
+  if (action === F_MGR_FINALIZE){
+    try{
+      const [ , faction, electionId ] = parts; // fMgrFinalize:<faction>:<electionId>
+      const bank = await FactionBank.findOne({ faction });
+      if (!bank?.currentElection || bank.currentElection.id !== electionId){
+        return interaction.reply({ content:'❌ No matching election to finalize.', ephemeral:true });
+      }
+      if (new Date(bank.currentElection.endsAt) > new Date()){
+        return interaction.reply({ content:'⏳ Election is still running. Try again after it ends.', ephemeral:true });
+      }
+      const votes = bank.currentElection.votes || {};
+      const tally = {};
+      for (const v of Object.values(votes)){
+        tally[v] = (tally[v]||0)+1;
+      }
+      const entries = Object.entries(tally);
+      if (!entries.length) return interaction.reply({ content:'⚠️ No votes were cast. Start a new election.', ephemeral:true });
+
+      // winner: highest votes, tie-breaker = lexicographically smallest id
+      entries.sort((a,b)=> b[1]-a[1] || (a[0] < b[0] ? -1 : 1));
+      const [winnerId, count] = entries[0];
+
+      bank.managerDiscordId = winnerId;
+      bank.managerTermEndAt = new Date(Date.now()+hrs(24*7));
+      bank.currentElection = null;
+      await bank.save();
+
+      // Announce in channel
+      const chId = getFactionChannelId(faction);
+      try{
+        const ch = chId ? await interaction.client.channels.fetch(chId) : null;
+        if (ch){
+          const e = createEmbed({
+            title: `🏁 ${factionDisplay(faction)} — Manager Elected`,
+            description:
+              `Winner: <@${winnerId}> with **${count}** vote(s).\n` +
+              `Term ends: <t:${Math.floor(bank.managerTermEndAt.getTime()/1000)}:R>.`
+          });
+          await ch.send({ embeds:[e] });
+        }
+      }catch{}
+
+      return interaction.reply({ content:`✅ Finalized. <@${winnerId}> is the new Manager.`, ephemeral:true });
+    }catch(e){
+      return interaction.reply({ content:`❌ ${e.message}`, ephemeral:true });
+    }
+  }
+
+  // Guard: user mismatch for button/select actions
+  if ((interaction.isButton?.() || interaction.isStringSelectMenu?.()) && interaction.user.id !== discordId){
     return interaction.reply({ content:'❌ You cannot manage factions for another user.', flags:64 });
   }
 
@@ -478,6 +687,7 @@ export default async function factionHandler(interaction){
       return `**${name}**\n• Costs → L1:${c1} • L2:${c2} • L3:${c3}\n• Effects → ${coins} • ${fAura} • ${lAura}\n• ${extra}`;
     }).join('\n\n') || '_No building config found_.';
 
+    const f1 = fortUpgradeCost(1), f2 = fortUpgradeCost(2), f3 = fortUpgradeCost(3);
     const e2 = createEmbed({
       title: '🏗️ Buildings',
       description:
@@ -486,7 +696,6 @@ export default async function factionHandler(interaction){
         bLines
     });
 
-    const f1 = fortUpgradeCost(1), f2 = fortUpgradeCost(2), f3 = fortUpgradeCost(3);
     const e3 = createEmbed({
       title: '🛡️ Fortifications',
       description:
@@ -521,19 +730,17 @@ export default async function factionHandler(interaction){
     const e6 = createEmbed({
       title: '🏦 Treasury, Income & Interests',
       description:
-        `• **Daily income** (tiles + building coin bonuses) goes **only** to the **faction treasury** — ` +
-        `players **receive nothing** from this revenue.\n` +
-        `• **Minted interests**: APR = (**Total Luck** / 100). Each day, **every member** receives ` +
-        `**⌊(treasury × APR / 365)⌋** coins **newly minted** — the **treasury itself does not change**.\n` +
-        `• **Treasury deposits**: a **25% tax** is taken and **redistributed at 12:00 UTC** to ` +
-        `**players of the other factions** (same as donations). The **remaining 75%** is added to the **treasury**.`
+        `• **Daily income** (tiles + building coin bonuses) goes **only** to the **faction treasury** — players do not receive it directly.\n` +
+        `• **Minted interests**: APR = (**Total Luck** / 100). Each day, every member receives ` +
+        `**⌊(treasury × APR / 365)⌋** coins (newly minted) — the **treasury itself does not change**.\n` +
+        `• **Treasury deposits**: a **25% tax** is redistributed at 12:00 UTC to other factions; **75%** goes to the treasury.\n` +
+        `• **Spending requires the elected Manager.**`
     });
 
     const e7 = createEmbed({
       title: '💸 Player Donations (75/25 fairness)',
       description:
-        `• When a player **deposits** to its faction : **75%** go to its treasury and **25%** ` +
-        `are **redistributed at 12:00 UTC** to **players of the other factions** to add fairness to the game.`
+        `• When a player **deposits** to their faction: **75%** → treasury • **25%** → daily redistribution to the **other factions**.`
     });
 
     const e8 = createEmbed({
@@ -542,6 +749,7 @@ export default async function factionHandler(interaction){
         `• **Stats & Map** → see the 3×3 map, pick a tile.\n` +
         `• **Tile panel** → Join/Leave Defense, Start/Join Attack, Build/Fortify.\n` +
         `• **Deposit to Treasury** → add coins (25% tax → daily redistribution, 75% → treasury).\n` +
+        `• **Elect Manager** → weekly term; only the Manager can spend treasury.\n` +
         `• **Faction switch** respects balance and cooldown rules.`
     });
 
@@ -613,7 +821,7 @@ export default async function factionHandler(interaction){
     }
   }
 
-  // Treasury deposit modal
+  // Treasury deposit modal open
   if (action===F_BANK_DEP_OPEN){
     const modal = new ModalBuilder().setCustomId(`fTreasuryDepositSubmit:${discordId}`).setTitle('Deposit to faction treasury');
     const input = new TextInputBuilder().setCustomId('amount').setLabel('Amount (coins)').setStyle(TextInputStyle.Short).setRequired(true);
@@ -640,6 +848,7 @@ export default async function factionHandler(interaction){
       title:`🏗️ Manage ${name}`,
       description:
         `Treasury: **${bank.treasury}**\n` +
+        `Manager required to spend: **Yes**\n` +
         `Building: **${hasB ? `${bType} L${bLvl}`:'none'}**` + (hasB?` → Upgrade: **${nextBCost}**`:'') + `\n` +
         `Fort: **L${t.fortLevel||0}** → Upgrade: **${fortCost}**`
     });
@@ -671,6 +880,7 @@ export default async function factionHandler(interaction){
       if (t.owner !== player.faction) throw new Error('Not your territory.');
       if (t.attack) throw new Error('Cannot build during an attack.');
       if (t.building?.type) throw new Error('Building already exists.');
+      await requireManager(interaction, player);
       const cost = buildingUpgradeCost(type,1);
       const bank = await FactionBank.findOne({ faction: player.faction });
       if (!bank || bank.treasury < cost) throw new Error('Not enough faction funds.');
@@ -689,6 +899,7 @@ export default async function factionHandler(interaction){
       if (t.owner !== player.faction) throw new Error('Not your territory.');
       if (t.attack) throw new Error('Cannot upgrade during an attack.');
       if (!t.building?.type) throw new Error('No building to upgrade.');
+      await requireManager(interaction, player);
       const toLevel = t.building.level + 1;
       const cost = buildingUpgradeCost(t.building.type, toLevel);
       const bank = await FactionBank.findOne({ faction: player.faction });
@@ -708,6 +919,7 @@ export default async function factionHandler(interaction){
       if (t.owner !== player.faction) throw new Error('Not your territory.');
       if (t.attack) throw new Error('Cannot destroy during an attack.');
       if (!t.building?.type || !t.building.level) throw new Error('No building to destroy.');
+      await requireManager(interaction, player);
       const refund = Math.floor(0.5 * buildingUpgradeCost(t.building.type, t.building.level));
       const bank = await FactionBank.findOne({ faction: player.faction });
       bank.treasury += refund;
@@ -726,6 +938,7 @@ export default async function factionHandler(interaction){
       if (!t) throw new Error('Territory not found');
       if (t.owner !== player.faction) throw new Error('Not your territory.');
       if (t.attack) throw new Error('Cannot fortify during an attack.');
+      await requireManager(interaction, player);
       const toLevel = (t.fortLevel||0)+1;
       const cost = fortUpgradeCost(toLevel);
       const bank = await FactionBank.findOne({ faction: player.faction });
