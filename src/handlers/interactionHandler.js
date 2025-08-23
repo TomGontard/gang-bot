@@ -13,14 +13,14 @@ export default async function interactionHandler(interaction, client) {
     const command = interaction.client.commands.get(interaction.commandName);
     if (!command) return;
     try {
-      // ❗️Ne plus faire de defer ici : chaque commande gère son defer/reply (public/ephemeral)
+      // Chaque commande gère son propre defer/reply
       await command.execute(interaction);
     } catch (err) {
       console.error('Error executing command:', err);
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({ content: '❌ Error executing command.' });
       } else {
-        await interaction.reply({ content: '❌ Error executing command.', ephemeral: true });
+        await interaction.reply({ content: '❌ Error executing command.', flags: 64 });
       }
     }
     return;
@@ -48,9 +48,9 @@ export default async function interactionHandler(interaction, client) {
       try {
         const { castManagerVote } = await import('../services/managerService.js');
         await castManagerVote(electionId, interaction.user.id, candidateId);
-        return interaction.reply({ content: `✅ Your vote for <@${candidateId}> has been recorded.`, ephemeral: true });
+        return interaction.reply({ content: `✅ Your vote for <@${candidateId}> has been recorded.`, flags: 64 });
       } catch (e) {
-        return interaction.reply({ content: `❌ ${e.message}`, ephemeral: true });
+        return interaction.reply({ content: `❌ ${e.message}`, flags: 64 });
       }
     }
 
@@ -91,7 +91,7 @@ export default async function interactionHandler(interaction, client) {
     // Donation (75/25 redistribution) kept here
     if (action === 'fDonateSubmit') {
       if (interaction.user.id !== discordId) {
-        return interaction.reply({ content:'❌ Not yours.', ephemeral:true });
+        return interaction.reply({ content:'❌ Not yours.', flags: 64 });
       }
       const { recordFactionDonation } = await import('../services/donationService.js');
       const amount = parseInt(interaction.fields.getTextInputValue('amount') || '0', 10) || 0;
@@ -99,10 +99,10 @@ export default async function interactionHandler(interaction, client) {
         await recordFactionDonation({ donorId: discordId, amount });
         return interaction.reply({
           content: `✅ Donated **${amount}**. **75%** platform • **25%** redistributed at **12:00 UTC**.`,
-          ephemeral: true
+          flags: 64
         });
       } catch (e) {
-        return interaction.reply({ content: `❌ ${e.message}`, ephemeral: true });
+        return interaction.reply({ content: `❌ ${e.message}`, flags: 64 });
       }
     }
   }
