@@ -89,21 +89,33 @@ export async function joinDefense(key, discordId) {
 export async function canLeaveDefense(tile, discordId) {
   const d = tile.defenders.find(x => x.discordId === discordId);
   if (!d) return true;
-  if (tile.attack) return false;
-  const minMs = metrics.faction.attack.minDefendMs;
+
+  // Attaque en cours = endAt non défini OU endAt dans le futur
+  const attackOngoing = !!(tile.attack && (!tile.attack.endAt || Date.now() < tile.attack.endAt.getTime()));
+  if (attackOngoing) return false;
+
+  // Min hours depuis la config defense (fallback 24h) → ms
+  const minHours = metrics?.faction?.defense?.minHours ?? 24;
+  const minMs = minHours * 3600 * 1000;
+
   return (Date.now() - new Date(d.sinceAt).getTime()) >= minMs;
 }
+
 
 export async function leaveDefense(key, discordId) {
   const tile = await Territory.findOne({ key });
   if (!tile) throw new Error('Territory not found');
+
+  const minHours = metrics?.faction?.defense?.minHours ?? 24;
   if (!(await canLeaveDefense(tile, discordId))) {
-    throw new Error('You cannot leave defense yet (minimum 24h or attack ongoing).');
+    throw new Error(`You cannot leave defense yet (minimum ${minHours}h or an attack is ongoing).`);
   }
+
   tile.defenders = tile.defenders.filter(d => d.discordId !== discordId);
   await tile.save();
   return tile;
 }
+
 
 export function buildingUpgradeCost(type, toLevel) {
   const b = metrics.faction.territory.buildings[type];
