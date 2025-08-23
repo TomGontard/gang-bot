@@ -1,3 +1,4 @@
+// src/handlers/interactionHandler.js
 import healingHandler from './buttonHandlers/healingHandler.js';
 import attributesHandler from './buttonHandlers/attributesHandler.js';
 import factionHandler from './buttonHandlers/factionHandler.js';
@@ -12,14 +13,14 @@ export default async function interactionHandler(interaction, client) {
     const command = interaction.client.commands.get(interaction.commandName);
     if (!command) return;
     try {
-      await interaction.deferReply({ flags: 64 });
+      // ❗️Ne plus faire de defer ici : chaque commande gère son defer/reply (public/ephemeral)
       await command.execute(interaction);
     } catch (err) {
       console.error('Error executing command:', err);
-      if (interaction.deferred) {
+      if (interaction.deferred || interaction.replied) {
         await interaction.editReply({ content: '❌ Error executing command.' });
       } else {
-        await interaction.reply({ content: '❌ Error executing command.', flags: 64 });
+        await interaction.reply({ content: '❌ Error executing command.', ephemeral: true });
       }
     }
     return;
@@ -77,7 +78,6 @@ export default async function interactionHandler(interaction, client) {
       return inventoryHandler(interaction);
     }
   }
-
 
   // 4) Modal submit
   if (interaction.isModalSubmit()) {
